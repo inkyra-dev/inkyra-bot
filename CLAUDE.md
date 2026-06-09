@@ -48,6 +48,8 @@ DB_PATH=./data/bot.db
 
 Component interactions (`bj_hit`, `bj_stand`, `close_ticket`, `transcript_ticket`) and paginated leaderboard buttons (`xplb:N`, `ecolb:N`) are dispatched in `handleComponent()`.
 
+**Leaderboard helpers** (`helpers.go`): all paginated leaderboard rendering goes through three shared functions — `respondLeaderboard` (builds embed + buttons + calls `InteractionRespond`), `xpLeaderboardBody` (formats `[]LeaderboardEntry`), `econLeaderboardBody` (formats `[]UserEconomy`). Add new leaderboards by following this same pattern.
+
 ### Sub-systems
 | Package | Responsibility |
 |---|---|
@@ -55,7 +57,7 @@ Component interactions (`bj_hit`, `bj_stand`, `close_ticket`, `transcript_ticket
 | `internal/database` | SQLite connection (modernc pure-Go driver), WAL mode, auto-migrations on startup |
 | `internal/repositories` | Raw SQL CRUD: `xp_repo.go`, `economy_repo.go`, `items_repo.go`, `bj_repo.go`, `achievements_repo.go` |
 | `internal/xp` | XP gain on message (15–25 XP, 60s cooldown persisted in DB), MEE6 level formula, prestige at level 100 |
-| `internal/economy` | Wallet/bank, daily (streak bonus), work (4h cooldown), atomic transfers via SQL transactions |
+| `internal/economy` | Wallet/bank, daily (streak bonus), work (4h cooldown), atomic transfers via SQL transactions; all magic numbers are named constants (`dailyCooldown`, `workRewardMin/Max`, `millionaireThreshold`, etc.) |
 | `internal/games` | Coinflip, dice, slots; `blackjack.go` full engine with multi-step button interactions; `BJManager` holds in-memory sessions with a 10-min cleanup goroutine |
 | `internal/achievements` | Static catalogue of achievements (`All []Achievement`) + `Manager.Check()` which unlocks idempotently; errors are logged and never bubble up to callers |
 | `internal/tickets` | Opens/closes per-user ticket channels; generates TXT transcripts on close |
@@ -73,4 +75,22 @@ Component interactions (`bj_hit`, `bj_stand`, `close_ticket`, `transcript_ticket
 SQLite via `modernc.org/sqlite` (pure Go, no CGO required for the DB itself). Migrations run automatically in `internal/database/migrations.go` on every startup. Schema tables: `tickets`, `guild_settings`, `user_xp` (with `last_xp_at` for persistent cooldowns), `economy`, `items`, `inventory`, `achievements`, `blackjack_sessions` (purged on every startup). All financial operations (pay, deposit, buy, sell) use SQL transactions to prevent race conditions.
 
 ### Admin permission check
-Admin commands verify the Discord `Administrator` permission via the Discord API, not a hardcoded role. The check is done inside each admin command handler.
+Admin commands verify the Discord `Administrator` permission via the Discord API, not a hardcoded role. The check is done inside each admin command handler. All admin money/XP commands validate `amount > 0` (or `>= 0` for setxp) before calling the manager layer.
+
+### Security invariants
+- All SQL queries use positional `?` parameters — no SQL injection possible.
+- `items_repo.GetByID(guildID, id)` and `Buy` filter by `guild_id` — cross-guild item purchase is impossible.
+- Admin commands validate `amount > 0` at the command handler level, before any DB call.
+
+### Graceful shutdown
+`cmd/main.go` calls `handler.Shutdown()` on SIGINT/SIGTERM, before `dg.Close()` and `db.Close()` defers execute:
+
+```
+handler.Shutdown()
+    ├── games.Manager.Shutdown()
+    │       └── BJManager.Shutdown() → close(done)
+    │               └── cleanup() goroutine: <-done → return
+    └── music.Manager.Shutdown()
+            └── Player.Stop() × N active guilds
+                    └── loop() goroutine: <-p.stop → return
+```

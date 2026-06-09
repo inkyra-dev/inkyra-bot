@@ -1,10 +1,10 @@
 # ROADMAP — Inkyra Bot
 
-> Bot Discord modulaire en Go — mono-guild, SQLite, Docker. Versioning : `1.0.1` MINOR pour features, PATCH pour fixes.
+> Bot Discord modulaire en Go — mono-guild, SQLite, Docker. Versioning : MINOR pour features, PATCH pour fixes/robustesse.
 
 ---
 
-## Statut actuel — V1.0 (70%)
+## Statut actuel — V1.0.1 ✅
 
 | Système                | État                                                |
 | ---------------------- | --------------------------------------------------- |
@@ -14,68 +14,61 @@
 | Mini-jeux              | ✅ Complet — sessions blackjack purgées au restart  |
 | Musique                | ✅ Docker/Linux — stub Windows                      |
 | Achievements           | ✅ Complet — 14 achievements, déclencheurs branchés |
-| /econleaderboard       | ✅ Complet                                          |
-| guild_settings         | ⚠️ Partiellement branché — migration incomplète     |
+| Sécurité & robustesse  | ✅ Audit v1.0.1 appliqué                            |
 | Tests                  | ❌ Aucun                                            |
 
 ---
 
-## V1.0 — Stabilisation & complétion _(en cours)_
-
-> Objectif : un bot stable, sans données perdues au restart, avec toutes les features annoncées fonctionnelles.
+## V1.0 — Stabilisation & complétion ✅
 
 ### Fixes bloquants
 
-- [x] **Persist cooldowns XP** — colonne `last_xp_at` en SQLite
-- [x] **Sessions blackjack** — table `blackjack_sessions`, purge au démarrage
-- [x] **guild_settings** — branchement config tickets sur la table DB
+- [x] Persist cooldowns XP — colonne `last_xp_at` en SQLite
+- [x] Sessions blackjack — table `blackjack_sessions`, purge au démarrage
+- [x] `guild_settings` — branchement config tickets sur la table DB
 
 ### Features incomplètes
 
-- [x] **`/econleaderboard`** — slash command enregistrée
-- [x] **Achievements** — repo + manager + `/achievements` + déclencheurs
+- [x] `/econleaderboard` — slash command enregistrée
+- [x] Achievements — repo + manager + `/achievements` + déclencheurs
 
 ### Qualité
 
-- [ ] Tests unitaires : `TotalXPForLevel`, `BJ.Payout`, daily streak, cooldown XP
 - [x] Audit global post-fixes
 
 ---
 
-## V1.0.1 — Corrections audit & robustesse
+## V1.0.1 — Corrections audit & robustesse ✅
 
 > Objectif : corriger les failles et dettes identifiées à l'audit avant d'ajouter des features.
 
-### 🔴 Corrections urgentes (audit)
+### 🔴 Corrections urgentes
 
-- [ ] Valider `amount > 0` dans les commandes admin money/xp — `admin_cmd.go:38,53,94`
-- [ ] Ajouter `AND guild_id=?` dans `items_repo.go` — `Buy` et `GetByID`
-- [ ] Corriger `PlayerHandStr(reveal bool)` — paramètre ignoré, `blackjack.go:127`
-- [ ] Capturer les erreurs dans `cmdResetUser` — `admin_cmd.go:78`
+- [x] Valider `amount > 0` dans les commandes admin money/xp — `admin_cmd.go`
+- [x] Ajouter `AND guild_id=?` dans `items_repo.go` — `Buy` et `GetByID`
+- [x] Corriger `PlayerHandStr(reveal bool)` — paramètre ignoré supprimé
+- [x] Capturer les erreurs dans `cmdResetUser` — reset partiel visible pour l'admin
 
-### 🟡 Dette technique (audit)
+### 🟡 Dette technique
 
-- [ ] Dédupliquer les 4 blocs leaderboard → helper `renderLeaderboardPage`
-- [ ] Nommer les magic numbers en constantes dans `economy/manager.go`
-- [ ] Supprimer `IsUnlocked()` dead code — `achievements_repo.go:47`
-- [ ] Signal d'arrêt sur `BJManager.cleanup()` et `music.Player.loop` (graceful shutdown)
-
-### Modération & automatismes
-
-- [ ] Anti-spam (rate limiting messages, mute temporaire automatique)
-- [ ] Auto-roles (rôle attribué à l'arrivée, rôles par reaction/bouton)
-- [ ] Embeds avancés et menus de sélection (select menus Discord)
-- [ ] Logs de modération (kicks, bans, timeouts) dans un canal dédié
+- [x] Dédupliquer les 4 blocs leaderboard → `respondLeaderboard` + `xpLeaderboardBody` + `econLeaderboardBody`
+- [x] Nommer les magic numbers en constantes dans `economy/manager.go`
+- [x] Supprimer `IsUnlocked()` dead code — `achievements_repo.go`
+- [x] Signal d'arrêt sur `BJManager.cleanup()` et `music.Player.loop` (graceful shutdown)
 
 ---
 
 ## V1.0.2 — Améliorations UX & gameplay
 
+- [ ] Anti-spam (rate limiting messages, mute temporaire automatique)
+- [ ] Auto-roles (rôle attribué à l'arrivée, rôles par reaction/bouton)
+- [ ] Logs de modération (kicks, bans, timeouts) dans un canal dédié
+- [ ] Tests unitaires : `TotalXPForLevel`, `BJ.Payout`, daily streak, cooldown XP
 - [ ] Achievements supplémentaires (streaks daily, prestige, wins en jeux)
 - [ ] Notifications de level-up configurables (canal dédié ou DM)
-- [ ] Cooldowns work/daily configurables via guild_settings
-- [ ] Pagination améliorée (leaderboards XP + économie unifiés)
+- [ ] Cooldowns work/daily configurables via `guild_settings`
 - [ ] Plafond de mise configurable dans les mini-jeux
+- [ ] Embeds avancés et menus de sélection (select menus Discord)
 
 ---
 
@@ -83,7 +76,6 @@
 
 - [ ] Structured logging (`slog`) avec niveaux DEBUG/INFO/ERROR
 - [ ] Métriques basiques (commandes les plus utilisées, uptime)
-- [ ] Graceful shutdown complet (drain des sessions actives avant arrêt)
 - [ ] Health check endpoint HTTP minimal (pour Uptime Kuma)
 - [ ] Validation config au démarrage — message clair si TOKEN vide
 
