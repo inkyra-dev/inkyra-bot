@@ -83,9 +83,4 @@ docker compose up -d --build
 
 ## Roadmap
 
-- [x] Slash commands
-- [x] Système de tickets
-- [x] Musique YouTube
-- [ ] Anti-spam
-- [ ] Auto-roles
-- [ ] Menus et embeds avancés
+- [ROADMAP](/ROADMAP.md)
