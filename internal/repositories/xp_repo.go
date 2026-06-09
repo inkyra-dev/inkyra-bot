@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"time"
 
 	"discord-bot/internal/database"
 )
@@ -129,4 +130,27 @@ func (r *XPRepo) Count(guildID string) (int64, error) {
 func (r *XPRepo) Reset(guildID, userID string) error {
 	_, err := r.db.Exec(`DELETE FROM user_xp WHERE guild_id=? AND user_id=?`, guildID, userID)
 	return err
+}
+
+// CheckAndSetCooldown returns true if the XP cooldown has expired and atomically
+// resets last_xp_at to now. Returns false if the user is still on cooldown.
+func (r *XPRepo) CheckAndSetCooldown(guildID, userID string, cooldownSec int64) (bool, error) {
+	// Ensure the row exists so the UPDATE below always finds it.
+	if _, err := r.db.Exec(`
+		INSERT OR IGNORE INTO user_xp (user_id, guild_id, total_xp, level, prestige, last_xp_at)
+		VALUES (?, ?, 0, 0, 0, 0)
+	`, userID, guildID); err != nil {
+		return false, err
+	}
+
+	now := time.Now().Unix()
+	res, err := r.db.Exec(`
+		UPDATE user_xp SET last_xp_at=?
+		WHERE guild_id=? AND user_id=? AND last_xp_at<=?
+	`, now, guildID, userID, now-cooldownSec)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }

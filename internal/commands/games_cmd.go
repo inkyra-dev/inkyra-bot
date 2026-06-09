@@ -150,11 +150,14 @@ func (h *Handler) cmdBlackjack(s *discordgo.Session, i *discordgo.InteractionCre
 	}
 
 	session, outcome := h.gamesMgr.BJ.Start(i.GuildID, i.Member.User.ID, i.ChannelID, bet)
+	h.achMgr.Check(i.GuildID, i.Member.User.ID, "first_blackjack")
 
 	if outcome == games.BJBlackjack {
 		payout := session.Payout(games.BJBlackjack)
 		h.gamesMgr.Credit(i.GuildID, i.Member.User.ID, bet+payout)
 		h.gamesMgr.BJ.Delete(i.GuildID, i.Member.User.ID)
+		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_natural")
+		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_win")
 		utils.RespondEmbed(s, i.Interaction, utils.EmbedFields(
 			"🃏 Blackjack — Blackjack naturel ! 🎉", "", utils.ColorGreen,
 			utils.Field("Ta main", session.PlayerHandStr(false), false),
@@ -220,6 +223,7 @@ func (h *Handler) bjRespond(s *discordgo.Session, i *discordgo.InteractionCreate
 	switch outcome {
 	case games.BJPlayerWin:
 		h.gamesMgr.Credit(i.GuildID, i.Member.User.ID, session.Bet+payout)
+		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_win")
 	case games.BJPush:
 		h.gamesMgr.Refund(i.GuildID, i.Member.User.ID, session.Bet)
 	// BJBust et BJDealerWin : mise déjà déduite, rien à rembourser

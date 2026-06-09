@@ -190,3 +190,9 @@ func (r *EconomyRepo) GetLeaderboard(guildID string, limit, offset int) ([]UserE
 	}
 	return out, rows.Err()
 }
+
+func (r *EconomyRepo) Count(guildID string) (int64, error) {
+	var n int64
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM economy WHERE guild_id=?`, guildID).Scan(&n)
+	return n, err
+}

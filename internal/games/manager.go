@@ -8,9 +8,9 @@ type Manager struct {
 	econRepo *repositories.EconomyRepo
 }
 
-func NewManager(econRepo *repositories.EconomyRepo) *Manager {
+func NewManager(econRepo *repositories.EconomyRepo, bjRepo *repositories.BJRepo) *Manager {
 	return &Manager{
-		BJ:       NewBJManager(),
+		BJ:       NewBJManager(bjRepo),
 		econRepo: econRepo,
 	}
 }

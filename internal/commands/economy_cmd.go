@@ -193,3 +193,103 @@ func (h *Handler) cmdInventory(s *discordgo.Session, i *discordgo.InteractionCre
 	utils.RespondEmbed(s, i.Interaction,
 		utils.Embed("🎒 Inventaire", sb.String(), utils.ColorBlue))
 }
+
+// ── Classement économique ─────────────────────────────────────────────────────
+
+func (h *Handler) cmdEconLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	page := 1
+	if opts := i.ApplicationCommandData().Options; len(opts) > 0 {
+		page = int(opts[0].IntValue())
+		if page < 1 {
+			page = 1
+		}
+	}
+
+	const pageSize = 10
+	offset := (page - 1) * pageSize
+	entries, err := h.econMgr.GetLeaderboard(i.GuildID, pageSize, offset)
+	if err != nil || len(entries) == 0 {
+		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée économique pour ce serveur.")
+		return
+	}
+
+	total, _ := h.econMgr.Count(i.GuildID)
+	totalPages := (int(total) + pageSize - 1) / pageSize
+
+	medals := []string{"🥇", "🥈", "🥉"}
+	var sb strings.Builder
+	for idx, e := range entries {
+		rank := offset + idx + 1
+		medal := ""
+		if rank-1 < len(medals) {
+			medal = medals[rank-1] + " "
+		}
+		name := usernameOrID(s, i.GuildID, e.UserID)
+		sb.WriteString(fmt.Sprintf("%s`#%d` **%s** — %s 🪙\n",
+			medal, rank, name, coins(e.Wallet+e.Bank)))
+	}
+
+	embed := utils.EmbedFields(
+		"💰 Classement Économie",
+		sb.String(),
+		utils.ColorYellow,
+		utils.Field("Page", fmt.Sprintf("%d / %d", page, totalPages), true),
+	)
+	buttons := leaderboardButtons(page, totalPages, "ecolb")
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: buttons,
+		},
+	})
+}
+
+func (h *Handler) handleEcoLeaderboardPage(s *discordgo.Session, i *discordgo.InteractionCreate, id string) {
+	parts := strings.SplitN(id, ":", 2)
+	if len(parts) != 2 {
+		return
+	}
+
+	var page int
+	fmt.Sscanf(parts[1], "%d", &page)
+	if page < 1 {
+		page = 1
+	}
+
+	const pageSize = 10
+	offset := (page - 1) * pageSize
+	entries, err := h.econMgr.GetLeaderboard(i.GuildID, pageSize, offset)
+	if err != nil || len(entries) == 0 {
+		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée.")
+		return
+	}
+
+	total, _ := h.econMgr.Count(i.GuildID)
+	totalPages := (int(total) + pageSize - 1) / pageSize
+
+	medals := []string{"🥇", "🥈", "🥉"}
+	var sb strings.Builder
+	for idx, e := range entries {
+		rank := offset + idx + 1
+		medal := ""
+		if rank-1 < len(medals) {
+			medal = medals[rank-1] + " "
+		}
+		name := usernameOrID(s, i.GuildID, e.UserID)
+		sb.WriteString(fmt.Sprintf("%s`#%d` **%s** — %s 🪙\n",
+			medal, rank, name, coins(e.Wallet+e.Bank)))
+	}
+
+	embed := utils.EmbedFields("💰 Classement Économie", sb.String(), utils.ColorYellow,
+		utils.Field("Page", fmt.Sprintf("%d / %d", page, totalPages), true))
+	buttons := leaderboardButtons(page, totalPages, "ecolb")
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: buttons,
+		},
+	})
+}

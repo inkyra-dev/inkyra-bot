@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"sync"
-	"time"
 
 	"github.com/bwmarrin/discordgo"
 
+	"discord-bot/internal/achievements"
 	"discord-bot/internal/repositories"
 	"discord-bot/internal/utils"
 )
@@ -16,54 +15,30 @@ import (
 const (
 	minXPGain       = 15
 	maxXPGain       = 25
-	messageCooldown = 60 * time.Second
+	messageCooldown = 60 // seconds
 )
 
 type Manager struct {
-	mu        sync.RWMutex
-	cooldowns map[string]time.Time // key: guildID+":"+userID
-	repo      *repositories.XPRepo
+	repo   *repositories.XPRepo
+	achMgr *achievements.Manager
 }
 
-func NewManager(repo *repositories.XPRepo) *Manager {
-	m := &Manager{
-		cooldowns: make(map[string]time.Time),
-		repo:      repo,
-	}
-	go m.cleanupLoop()
-	return m
+func NewManager(repo *repositories.XPRepo, achMgr *achievements.Manager) *Manager {
+	return &Manager{repo: repo, achMgr: achMgr}
 }
 
-func (m *Manager) cleanupLoop() {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		now := time.Now()
-		m.mu.Lock()
-		for k, v := range m.cooldowns {
-			if now.After(v) {
-				delete(m.cooldowns, k)
-			}
-		}
-		m.mu.Unlock()
-	}
+var levelAchievements = map[int]string{
+	5: "level_5", 10: "level_10", 25: "level_25", 50: "level_50", 100: "level_100",
 }
 
 // HandleMessage est appelé à chaque message d'utilisateur pour attribuer de l'XP.
 func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID string) {
-	key := guildID + ":" + userID
-
-	m.mu.RLock()
-	expiry, ok := m.cooldowns[key]
-	m.mu.RUnlock()
-
-	if ok && time.Now().Before(expiry) {
+	ok, err := m.repo.CheckAndSetCooldown(guildID, userID, messageCooldown)
+	if err != nil || !ok {
 		return
 	}
 
-	m.mu.Lock()
-	m.cooldowns[key] = time.Now().Add(messageCooldown)
-	m.mu.Unlock()
+	m.achMgr.Check(guildID, userID, "first_message")
 
 	prev, err := m.repo.Get(guildID, userID)
 	if err != nil {
@@ -82,6 +57,9 @@ func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID
 	if newLevel != oldLevel {
 		if err := m.repo.UpdateLevel(guildID, userID, newLevel); err != nil {
 			log.Printf("[xp] UpdateLevel error: %v", err)
+		}
+		if key, ok := levelAchievements[newLevel]; ok {
+			m.achMgr.Check(guildID, userID, key)
 		}
 		m.announceLevelUp(s, guildID, userID, channelID, newLevel, prev.Prestige)
 	}
@@ -157,7 +135,11 @@ func (m *Manager) Prestige(guildID, userID string) error {
 	if data.Level < MaxLevel {
 		return fmt.Errorf("tu dois être niveau %d pour prestigier (niveau actuel: %d)", MaxLevel, data.Level)
 	}
-	return m.repo.Prestige(guildID, userID)
+	if err := m.repo.Prestige(guildID, userID); err != nil {
+		return err
+	}
+	m.achMgr.Check(guildID, userID, "prestige")
+	return nil
 }
 
 func (m *Manager) Reset(guildID, userID string) error {

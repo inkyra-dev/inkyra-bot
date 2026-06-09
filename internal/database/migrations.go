@@ -76,6 +76,31 @@ func (db *DB) migrate() error {
 			earned_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(user_id, guild_id, achievement)
 		);
+
+		-- Blackjack active sessions (purgées au démarrage pour nettoyer les orphelines)
+		CREATE TABLE IF NOT EXISTS blackjack_sessions (
+			user_id    TEXT    NOT NULL,
+			guild_id   TEXT    NOT NULL,
+			created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+			PRIMARY KEY (user_id, guild_id)
+		);
 	`)
+	if err != nil {
+		return err
+	}
+
+	// Purge orphaned blackjack sessions left over from a previous crash or restart.
+	if _, err := db.Exec(`DELETE FROM blackjack_sessions`); err != nil {
+		return err
+	}
+
+	// Add last_xp_at to user_xp for persistent XP cooldowns (idempotent).
+	var colExists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('user_xp') WHERE name='last_xp_at'`).Scan(&colExists); err != nil {
+		return err
+	}
+	if colExists == 0 {
+		_, err = db.Exec(`ALTER TABLE user_xp ADD COLUMN last_xp_at INTEGER NOT NULL DEFAULT 0`)
+	}
 	return err
 }

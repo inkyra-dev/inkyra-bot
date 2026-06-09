@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 
+	"discord-bot/internal/achievements"
 	"discord-bot/internal/config"
 	"discord-bot/internal/database"
 	"discord-bot/internal/economy"
@@ -29,6 +30,7 @@ type Handler struct {
 	xpMgr   *xp.Manager
 	econMgr  *economy.Manager
 	gamesMgr *games.Manager
+	achMgr   *achievements.Manager
 	commands map[string]CommandFunc
 }
 
@@ -36,6 +38,9 @@ func NewHandler(s *discordgo.Session, cfg *config.Config, db *database.DB) *Hand
 	xpRepo := repositories.NewXPRepo(db)
 	econRepo := repositories.NewEconomyRepo(db)
 	itemRepo := repositories.NewItemsRepo(db)
+	bjRepo := repositories.NewBJRepo(db)
+	achRepo := repositories.NewAchievementRepo(db)
+	achMgr := achievements.NewManager(achRepo)
 
 	h := &Handler{
 		session:  s,
@@ -43,9 +48,10 @@ func NewHandler(s *discordgo.Session, cfg *config.Config, db *database.DB) *Hand
 		db:       db,
 		tickets:  tickets.NewManager(db, cfg),
 		music:    music.NewManager(),
-		xpMgr:   xp.NewManager(xpRepo),
-		econMgr:  economy.NewManager(econRepo, itemRepo),
-		gamesMgr: games.NewManager(econRepo),
+		xpMgr:   xp.NewManager(xpRepo, achMgr),
+		econMgr:  economy.NewManager(econRepo, itemRepo, achMgr),
+		gamesMgr: games.NewManager(econRepo, bjRepo),
+		achMgr:   achMgr,
 		commands: make(map[string]CommandFunc),
 	}
 	h.register()
@@ -92,12 +98,16 @@ func (h *Handler) register() {
 	h.commands["buy"] = h.cmdBuy
 	h.commands["sell"] = h.cmdSell
 	h.commands["inventory"] = h.cmdInventory
+	h.commands["econleaderboard"] = h.cmdEconLeaderboard
 
 	// Jeux
 	h.commands["coinflip"] = h.cmdCoinflip
 	h.commands["dice"] = h.cmdDice
 	h.commands["slots"] = h.cmdSlots
 	h.commands["blackjack"] = h.cmdBlackjack
+
+	// Achievements
+	h.commands["achievements"] = h.cmdAchievements
 
 	// Admin
 	h.commands["givemoney"] = h.cmdGiveMoney
@@ -135,6 +145,8 @@ func (h *Handler) handleComponent(s *discordgo.Session, i *discordgo.Interaction
 		// Leaderboard pagination : "xplb:N" ou "ecolb:N"
 		if strings.HasPrefix(id, "xplb:") {
 			h.handleXPLeaderboardPage(s, i, id)
+		} else if strings.HasPrefix(id, "ecolb:") {
+			h.handleEcoLeaderboardPage(s, i, id)
 		}
 	}
 }
@@ -252,6 +264,8 @@ func (h *Handler) RegisterCommands() {
 		{Name: "sell", Description: "Revendre un item",
 			Options: []*discordgo.ApplicationCommandOption{intOpt("id", "ID de l'item", true)}},
 		{Name: "inventory", Description: "Ton inventaire"},
+		{Name: "econleaderboard", Description: "Classement économique du serveur",
+			Options: []*discordgo.ApplicationCommandOption{intOpt("page", "Numéro de page", false)}},
 
 		// ── Jeux ──
 		{Name: "coinflip", Description: "Pile ou face",
@@ -269,6 +283,10 @@ func (h *Handler) RegisterCommands() {
 			Options: []*discordgo.ApplicationCommandOption{intOpt("mise", "Mise en coins", true)}},
 		{Name: "blackjack", Description: "Jouer au blackjack",
 			Options: []*discordgo.ApplicationCommandOption{intOpt("mise", "Mise en coins", true)}},
+		{Name: "achievements", Description: "Affiche les achievements d'un utilisateur",
+			Options: []*discordgo.ApplicationCommandOption{
+				{Type: discordgo.ApplicationCommandOptionUser, Name: "user", Description: "Utilisateur (optionnel)", Required: false},
+			}},
 
 		// ── Admin ──
 		{Name: "givemoney", Description: "[Admin] Donne des coins",

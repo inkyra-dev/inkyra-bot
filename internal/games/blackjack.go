@@ -2,11 +2,14 @@ package games
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"discord-bot/internal/repositories"
 )
 
 // ── Cartes ────────────────────────────────────────────────────────────────────
@@ -191,10 +194,14 @@ func (s *BlackjackSession) Payout(outcome BJOutcome) int64 {
 type BJManager struct {
 	mu       sync.RWMutex
 	sessions map[string]*BlackjackSession // key: guildID+":"+userID
+	repo     *repositories.BJRepo
 }
 
-func NewBJManager() *BJManager {
-	bj := &BJManager{sessions: make(map[string]*BlackjackSession)}
+func NewBJManager(repo *repositories.BJRepo) *BJManager {
+	bj := &BJManager{
+		sessions: make(map[string]*BlackjackSession),
+		repo:     repo,
+	}
 	go bj.cleanup()
 	return bj
 }
@@ -209,6 +216,9 @@ func (m *BJManager) Start(guildID, userID, channelID string, bet int64) (*Blackj
 	m.sessions[key] = s
 	m.mu.Unlock()
 
+	if err := m.repo.Open(guildID, userID); err != nil {
+		log.Printf("[bj] repo.Open: %v", err)
+	}
 	return s, s.initialOutcome()
 }
 
@@ -223,6 +233,10 @@ func (m *BJManager) Delete(guildID, userID string) {
 	m.mu.Lock()
 	delete(m.sessions, m.key(guildID, userID))
 	m.mu.Unlock()
+
+	if err := m.repo.Close(guildID, userID); err != nil {
+		log.Printf("[bj] repo.Close: %v", err)
+	}
 }
 
 func (m *BJManager) HasActive(guildID, userID string) bool {
@@ -241,6 +255,9 @@ func (m *BJManager) cleanup() {
 		for k, s := range m.sessions {
 			if s.CreatedAt.Before(limit) {
 				delete(m.sessions, k)
+				if err := m.repo.Close(s.GuildID, s.UserID); err != nil {
+					log.Printf("[bj] repo.Close (cleanup): %v", err)
+				}
 			}
 		}
 		m.mu.Unlock()

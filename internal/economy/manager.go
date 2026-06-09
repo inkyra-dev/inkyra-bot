@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	"discord-bot/internal/achievements"
 	"discord-bot/internal/repositories"
 )
 
@@ -27,10 +28,21 @@ var jobs = []struct {
 type Manager struct {
 	econRepo *repositories.EconomyRepo
 	itemRepo *repositories.ItemsRepo
+	achMgr   *achievements.Manager
 }
 
-func NewManager(econRepo *repositories.EconomyRepo, itemRepo *repositories.ItemsRepo) *Manager {
-	return &Manager{econRepo: econRepo, itemRepo: itemRepo}
+func NewManager(econRepo *repositories.EconomyRepo, itemRepo *repositories.ItemsRepo, achMgr *achievements.Manager) *Manager {
+	return &Manager{econRepo: econRepo, itemRepo: itemRepo, achMgr: achMgr}
+}
+
+func (m *Manager) checkMillionaire(guildID, userID string) {
+	u, err := m.econRepo.Get(guildID, userID)
+	if err != nil {
+		return
+	}
+	if u.Wallet+u.Bank >= 1_000_000 {
+		m.achMgr.Check(guildID, userID, "millionaire")
+	}
 }
 
 func (m *Manager) Balance(guildID, userID string) (*repositories.UserEconomy, error) {
@@ -70,6 +82,11 @@ func (m *Manager) Daily(guildID, userID string) (*DailyResult, error) {
 	if err := m.econRepo.SetLastDaily(guildID, userID, streak, now); err != nil {
 		return nil, err
 	}
+	m.achMgr.Check(guildID, userID, "first_daily")
+	if streak >= 7 {
+		m.achMgr.Check(guildID, userID, "daily_streak_7")
+	}
+	m.checkMillionaire(guildID, userID)
 	return &DailyResult{Reward: reward, Streak: streak}, nil
 }
 
@@ -99,6 +116,7 @@ func (m *Manager) Work(guildID, userID string) (*WorkResult, error) {
 	if err := m.econRepo.SetLastWork(guildID, userID, time.Now()); err != nil {
 		return nil, err
 	}
+	m.checkMillionaire(guildID, userID)
 	return &WorkResult{Reward: reward, Job: job.name, Action: job.action}, nil
 }
 
@@ -151,7 +169,11 @@ func (m *Manager) Buy(guildID, userID string, itemID int64) (*repositories.Item,
 	if err != nil {
 		return nil, err
 	}
-	return item, m.itemRepo.Buy(guildID, userID, itemID)
+	if err := m.itemRepo.Buy(guildID, userID, itemID); err != nil {
+		return nil, err
+	}
+	m.achMgr.Check(guildID, userID, "first_purchase")
+	return item, nil
 }
 
 func (m *Manager) Sell(guildID, userID string, itemID int64) (*repositories.Item, error) {
@@ -188,6 +210,10 @@ func (m *Manager) AdminReset(guildID, userID string) error {
 
 func (m *Manager) GetLeaderboard(guildID string, limit, offset int) ([]repositories.UserEconomy, error) {
 	return m.econRepo.GetLeaderboard(guildID, limit, offset)
+}
+
+func (m *Manager) Count(guildID string) (int64, error) {
+	return m.econRepo.Count(guildID)
 }
 
 func (m *Manager) AddToWallet(guildID, userID string, amount int64) error {
