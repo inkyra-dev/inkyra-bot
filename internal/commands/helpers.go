@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+
+	"discord-bot/internal/utils"
 )
 
 // coins formate un nombre de coins avec séparateur de milliers.
@@ -74,4 +76,23 @@ func leaderboardButtons(page, totalPages int, prefix string) []discordgo.Message
 		return nil
 	}
 	return []discordgo.MessageComponent{row}
+}
+
+// respondLeaderboard envoie (ou met à jour) un embed de classement paginé.
+// update=true utilise InteractionResponseUpdateMessage (bouton), false crée un nouveau message.
+func respondLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate, title, body string, color, page, totalPages int, prefix string, update bool) {
+	embed := utils.EmbedFields(title, body, color,
+		utils.Field("Page", fmt.Sprintf("%d / %d", page, totalPages), true))
+	buttons := leaderboardButtons(page, totalPages, prefix)
+	respType := discordgo.InteractionResponseChannelMessageWithSource
+	if update {
+		respType = discordgo.InteractionResponseUpdateMessage
+	}
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: respType,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: buttons,
+		},
+	})
 }

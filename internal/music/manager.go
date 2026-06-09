@@ -49,6 +49,18 @@ func (m *Manager) Play(s *discordgo.Session, guildID, voiceChannelID string, tra
 	return nil
 }
 
+func (m *Manager) Shutdown() {
+	m.mu.Lock()
+	players := make([]*Player, 0, len(m.players))
+	for _, p := range m.players {
+		players = append(players, p)
+	}
+	m.mu.Unlock()
+	for _, p := range players {
+		p.Stop()
+	}
+}
+
 // HandleVoiceStateUpdate détecte quand le bot est seul dans un canal et se déconnecte.
 func (m *Manager) HandleVoiceStateUpdate(s *discordgo.Session, vs *discordgo.VoiceStateUpdate) {
 	if vs.GuildID == "" {

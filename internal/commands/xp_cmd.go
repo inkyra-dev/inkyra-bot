@@ -6,9 +6,24 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 
+	"discord-bot/internal/repositories"
 	"discord-bot/internal/utils"
 	"discord-bot/internal/xp"
 )
+
+func xpLeaderboardBody(s *discordgo.Session, guildID string, entries []repositories.LeaderboardEntry) string {
+	medals := []string{"🥇", "🥈", "🥉"}
+	var sb strings.Builder
+	for _, e := range entries {
+		medal := ""
+		if int(e.Rank)-1 < len(medals) {
+			medal = medals[e.Rank-1] + " "
+		}
+		name := usernameOrID(s, guildID, e.UserID)
+		fmt.Fprintf(&sb, "%s`#%d` **%s** — Niv. %d | %d XP\n", medal, e.Rank, name, e.Level, e.TotalXP)
+	}
+	return sb.String()
+}
 
 func (h *Handler) cmdRank(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	targetID := i.Member.User.ID
@@ -62,35 +77,7 @@ func (h *Handler) cmdLeaderboard(s *discordgo.Session, i *discordgo.InteractionC
 
 	const pageSize = 10
 	totalPages := (int(total) + pageSize - 1) / pageSize
-
-	medals := []string{"🥇", "🥈", "🥉"}
-	var sb strings.Builder
-	for _, e := range entries {
-		medal := ""
-		rank := int(e.Rank)
-		if rank-1 < len(medals) {
-			medal = medals[rank-1] + " "
-		}
-		name := usernameOrID(s, i.GuildID, e.UserID)
-		sb.WriteString(fmt.Sprintf("%s`#%d` **%s** — Niv. %d | %d XP\n",
-			medal, rank, name, e.Level, e.TotalXP))
-	}
-
-	embed := utils.EmbedFields(
-		"🏆 Classement XP",
-		sb.String(),
-		utils.ColorPurple,
-		utils.Field("Page", fmt.Sprintf("%d / %d", page, totalPages), true),
-	)
-
-	buttons := leaderboardButtons(page, totalPages, "xplb")
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: buttons,
-		},
-	})
+	respondLeaderboard(s, i, "🏆 Classement XP", xpLeaderboardBody(s, i.GuildID, entries), utils.ColorPurple, page, totalPages, "xplb", false)
 }
 
 // ── Admin XP ──────────────────────────────────────────────────────────────────

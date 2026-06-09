@@ -29,3 +29,7 @@ func (m *Manager) Credit(guildID, userID string, amount int64) error {
 func (m *Manager) Refund(guildID, userID string, amount int64) error {
 	return m.econRepo.AddToWallet(guildID, userID, amount)
 }
+
+func (m *Manager) Shutdown() {
+	m.BJ.Shutdown()
+}

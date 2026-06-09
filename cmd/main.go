@@ -51,5 +51,6 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-stop
 
+	handler.Shutdown()
 	log.Println("[main] Arrêt propre...")
 }

@@ -42,12 +42,3 @@ func (r *AchievementRepo) GetByUser(guildID, userID string) ([]string, error) {
 	}
 	return out, rows.Err()
 }
-
-// IsUnlocked checks whether a specific achievement is already unlocked.
-func (r *AchievementRepo) IsUnlocked(guildID, userID, achievement string) (bool, error) {
-	var n int
-	err := r.db.QueryRow(`
-		SELECT COUNT(*) FROM achievements WHERE guild_id=? AND user_id=? AND achievement=?
-	`, guildID, userID, achievement).Scan(&n)
-	return n > 0, err
-}

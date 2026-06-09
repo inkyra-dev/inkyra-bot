@@ -9,6 +9,21 @@ import (
 	"discord-bot/internal/repositories"
 )
 
+const (
+	dailyCooldown     = 24 * time.Hour
+	dailyStreakWindow = 48 * time.Hour
+	dailyBaseReward   = 200
+	dailyStreakBonus  = 10
+	dailyMaxReward    = 600
+	dailyStreakTarget  = 7
+
+	workCooldown  = 4 * time.Hour
+	workRewardMin = 50
+	workRewardMax = 200
+
+	millionaireThreshold = 1_000_000
+)
+
 var jobs = []struct {
 	name   string
 	action string
@@ -40,7 +55,7 @@ func (m *Manager) checkMillionaire(guildID, userID string) {
 	if err != nil {
 		return
 	}
-	if u.Wallet+u.Bank >= 1_000_000 {
+	if u.Wallet+u.Bank >= millionaireThreshold {
 		m.achMgr.Check(guildID, userID, "millionaire")
 	}
 }
@@ -61,19 +76,19 @@ func (m *Manager) Daily(guildID, userID string) (*DailyResult, error) {
 	}
 
 	now := time.Now()
-	if u.LastDaily != nil && now.Sub(*u.LastDaily) < 24*time.Hour {
-		remaining := 24*time.Hour - now.Sub(*u.LastDaily)
+	if u.LastDaily != nil && now.Sub(*u.LastDaily) < dailyCooldown {
+		remaining := dailyCooldown - now.Sub(*u.LastDaily)
 		return nil, fmt.Errorf("revenez dans **%s**", formatDuration(remaining))
 	}
 
 	streak := 1
-	if u.LastDaily != nil && now.Sub(*u.LastDaily) < 48*time.Hour {
+	if u.LastDaily != nil && now.Sub(*u.LastDaily) < dailyStreakWindow {
 		streak = u.DailyStreak + 1
 	}
 
-	reward := int64(200) + int64(streak)*10
-	if reward > 600 {
-		reward = 600
+	reward := int64(dailyBaseReward) + int64(streak)*dailyStreakBonus
+	if reward > dailyMaxReward {
+		reward = dailyMaxReward
 	}
 
 	if err := m.econRepo.AddToWallet(guildID, userID, reward); err != nil {
@@ -83,7 +98,7 @@ func (m *Manager) Daily(guildID, userID string) (*DailyResult, error) {
 		return nil, err
 	}
 	m.achMgr.Check(guildID, userID, "first_daily")
-	if streak >= 7 {
+	if streak >= dailyStreakTarget {
 		m.achMgr.Check(guildID, userID, "daily_streak_7")
 	}
 	m.checkMillionaire(guildID, userID)
@@ -102,12 +117,12 @@ func (m *Manager) Work(guildID, userID string) (*WorkResult, error) {
 		return nil, err
 	}
 
-	if u.LastWork != nil && time.Since(*u.LastWork) < 4*time.Hour {
-		remaining := 4*time.Hour - time.Since(*u.LastWork)
+	if u.LastWork != nil && time.Since(*u.LastWork) < workCooldown {
+		remaining := workCooldown - time.Since(*u.LastWork)
 		return nil, fmt.Errorf("vous avez déjà travaillé, revenez dans **%s**", formatDuration(remaining))
 	}
 
-	reward := int64(50 + rand.Intn(151)) // 50–200
+	reward := int64(workRewardMin + rand.Intn(workRewardMax-workRewardMin+1))
 	job := jobs[rand.Intn(len(jobs))]
 
 	if err := m.econRepo.AddToWallet(guildID, userID, reward); err != nil {

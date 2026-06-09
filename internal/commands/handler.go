@@ -163,36 +163,15 @@ func (h *Handler) handleXPLeaderboardPage(s *discordgo.Session, i *discordgo.Int
 		page = 1
 	}
 
-	const pageSize = 10
 	entries, total, err := h.xpMgr.GetLeaderboard(i.GuildID, page)
 	if err != nil || len(entries) == 0 {
 		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée.")
 		return
 	}
+
+	const pageSize = 10
 	totalPages := (int(total) + pageSize - 1) / pageSize
-
-	medals := []string{"🥇", "🥈", "🥉"}
-	var sb strings.Builder
-	for _, e := range entries {
-		medal := ""
-		if int(e.Rank)-1 < len(medals) {
-			medal = medals[e.Rank-1] + " "
-		}
-		name := usernameOrID(s, i.GuildID, e.UserID)
-		sb.WriteString(fmt.Sprintf("%s`#%d` **%s** — Niv. %d | %d XP\n", medal, e.Rank, name, e.Level, e.TotalXP))
-	}
-
-	embed := utils.EmbedFields("🏆 Classement XP", sb.String(), utils.ColorPurple,
-		utils.Field("Page", fmt.Sprintf("%d / %d", page, totalPages), true))
-	buttons := leaderboardButtons(page, totalPages, "xplb")
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: buttons,
-		},
-	})
+	respondLeaderboard(s, i, "🏆 Classement XP", xpLeaderboardBody(s, i.GuildID, entries), utils.ColorPurple, page, totalPages, "xplb", true)
 }
 
 func (h *Handler) RegisterCommands() {
@@ -307,6 +286,11 @@ func (h *Handler) RegisterCommands() {
 		}
 	}
 	log.Printf("[commands] %d commandes enregistrées", len(defs))
+}
+
+func (h *Handler) Shutdown() {
+	h.gamesMgr.Shutdown()
+	h.music.Shutdown()
 }
 
 // HandleVoiceStateUpdate est appelé par l'event voice.

@@ -195,15 +195,21 @@ type BJManager struct {
 	mu       sync.RWMutex
 	sessions map[string]*BlackjackSession // key: guildID+":"+userID
 	repo     *repositories.BJRepo
+	done     chan struct{}
 }
 
 func NewBJManager(repo *repositories.BJRepo) *BJManager {
 	bj := &BJManager{
 		sessions: make(map[string]*BlackjackSession),
 		repo:     repo,
+		done:     make(chan struct{}),
 	}
 	go bj.cleanup()
 	return bj
+}
+
+func (m *BJManager) Shutdown() {
+	close(m.done)
 }
 
 func (m *BJManager) key(guildID, userID string) string { return guildID + ":" + userID }
@@ -249,17 +255,22 @@ func (m *BJManager) HasActive(guildID, userID string) bool {
 func (m *BJManager) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		limit := time.Now().Add(-10 * time.Minute)
-		m.mu.Lock()
-		for k, s := range m.sessions {
-			if s.CreatedAt.Before(limit) {
-				delete(m.sessions, k)
-				if err := m.repo.Close(s.GuildID, s.UserID); err != nil {
-					log.Printf("[bj] repo.Close (cleanup): %v", err)
+	for {
+		select {
+		case <-m.done:
+			return
+		case <-ticker.C:
+			limit := time.Now().Add(-10 * time.Minute)
+			m.mu.Lock()
+			for k, s := range m.sessions {
+				if s.CreatedAt.Before(limit) {
+					delete(m.sessions, k)
+					if err := m.repo.Close(s.GuildID, s.UserID); err != nil {
+						log.Printf("[bj] repo.Close (cleanup): %v", err)
+					}
 				}
 			}
+			m.mu.Unlock()
 		}
-		m.mu.Unlock()
 	}
 }
