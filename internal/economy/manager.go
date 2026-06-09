@@ -165,7 +165,7 @@ func (m *Manager) Shop(guildID string) ([]repositories.Item, error) {
 }
 
 func (m *Manager) Buy(guildID, userID string, itemID int64) (*repositories.Item, error) {
-	item, err := m.itemRepo.GetByID(itemID)
+	item, err := m.itemRepo.GetByID(guildID, itemID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (m *Manager) Buy(guildID, userID string, itemID int64) (*repositories.Item,
 }
 
 func (m *Manager) Sell(guildID, userID string, itemID int64) (*repositories.Item, error) {
-	item, err := m.itemRepo.GetByID(itemID)
+	item, err := m.itemRepo.GetByID(guildID, itemID)
 	if err != nil {
 		return nil, err
 	}

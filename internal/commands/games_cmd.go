@@ -160,7 +160,7 @@ func (h *Handler) cmdBlackjack(s *discordgo.Session, i *discordgo.InteractionCre
 		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_win")
 		utils.RespondEmbed(s, i.Interaction, utils.EmbedFields(
 			"🃏 Blackjack — Blackjack naturel ! 🎉", "", utils.ColorGreen,
-			utils.Field("Ta main", session.PlayerHandStr(false), false),
+			utils.Field("Ta main", session.PlayerHandStr(), false),
 			utils.Field("Gain", fmt.Sprintf("+%s 🪙 (×1.5)", coins(payout)), true),
 		))
 		return
@@ -254,7 +254,7 @@ func (h *Handler) bjRespond(s *discordgo.Session, i *discordgo.InteractionCreate
 func bjEmbed(s *games.BlackjackSession, reveal bool) *discordgo.MessageEmbed {
 	return utils.EmbedFields(
 		"🃏 Blackjack", fmt.Sprintf("Mise : **%s** 🪙", coins(s.Bet)), utils.ColorBlue,
-		utils.Field("Ta main", s.PlayerHandStr(false), false),
+		utils.Field("Ta main", s.PlayerHandStr(), false),
 		utils.Field("Main du dealer", s.DealerHandStr(reveal), false),
 	)
 }

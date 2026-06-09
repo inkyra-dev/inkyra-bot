@@ -37,6 +37,10 @@ func (h *Handler) cmdGiveMoney(s *discordgo.Session, i *discordgo.InteractionCre
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	amount := opts[1].IntValue()
+	if amount <= 0 {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Le montant doit être supérieur à 0."))
+		return
+	}
 
 	if err := h.econMgr.AdminGive(i.GuildID, target.ID, amount); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
@@ -56,6 +60,10 @@ func (h *Handler) cmdRemoveMoney(s *discordgo.Session, i *discordgo.InteractionC
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	amount := opts[1].IntValue()
+	if amount <= 0 {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Le montant doit être supérieur à 0."))
+		return
+	}
 
 	if err := h.econMgr.AdminRemove(i.GuildID, target.ID, amount); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
@@ -75,8 +83,14 @@ func (h *Handler) cmdResetUser(s *discordgo.Session, i *discordgo.InteractionCre
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 
-	h.xpMgr.Reset(i.GuildID, target.ID)
-	h.econMgr.AdminReset(i.GuildID, target.ID)
+	if err := h.xpMgr.Reset(i.GuildID, target.ID); err != nil {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(fmt.Sprintf("Erreur réinitialisation XP : %v", err)))
+		return
+	}
+	if err := h.econMgr.AdminReset(i.GuildID, target.ID); err != nil {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(fmt.Sprintf("XP réinitialisé, mais erreur économie : %v", err)))
+		return
+	}
 
 	utils.RespondEmbed(s, i.Interaction,
 		utils.Embed("🔄 Réinitialisation",
@@ -92,6 +106,10 @@ func (h *Handler) cmdSetXP(s *discordgo.Session, i *discordgo.InteractionCreate)
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	amount := opts[1].IntValue()
+	if amount < 0 {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Le montant d'XP ne peut pas être négatif."))
+		return
+	}
 
 	if err := h.xpMgr.SetXP(i.GuildID, target.ID, amount); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))

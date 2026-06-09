@@ -103,6 +103,10 @@ func (h *Handler) cmdAddXP(s *discordgo.Session, i *discordgo.InteractionCreate)
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	amount := opts[1].IntValue()
+	if amount <= 0 {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Le montant doit être supérieur à 0."))
+		return
+	}
 
 	if err := h.xpMgr.AddXP(i.GuildID, target.ID, amount); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
@@ -120,6 +124,10 @@ func (h *Handler) cmdRemoveXP(s *discordgo.Session, i *discordgo.InteractionCrea
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	amount := opts[1].IntValue()
+	if amount <= 0 {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Le montant doit être supérieur à 0."))
+		return
+	}
 
 	if err := h.xpMgr.RemoveXP(i.GuildID, target.ID, amount); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
@@ -137,6 +145,10 @@ func (h *Handler) cmdSetLevel(s *discordgo.Session, i *discordgo.InteractionCrea
 	opts := i.ApplicationCommandData().Options
 	target := opts[0].UserValue(s)
 	level := int(opts[1].IntValue())
+	if level < 0 || level > xp.MaxLevel {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(fmt.Sprintf("Le niveau doit être entre 0 et %d.", xp.MaxLevel)))
+		return
+	}
 
 	if err := h.xpMgr.SetLevel(i.GuildID, target.ID, level); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))

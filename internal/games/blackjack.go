@@ -124,7 +124,7 @@ func (s *BlackjackSession) draw() Card {
 func (s *BlackjackSession) PlayerScore() int  { return handValue(s.PlayerHand) }
 func (s *BlackjackSession) DealerScore() int  { return handValue(s.DealerHand) }
 
-func (s *BlackjackSession) PlayerHandStr(reveal bool) string {
+func (s *BlackjackSession) PlayerHandStr() string {
 	return handStr(s.PlayerHand, false) + fmt.Sprintf(" **(score: %d)**", s.PlayerScore())
 }
 

@@ -49,11 +49,12 @@ func (r *ItemsRepo) GetAll(guildID string) ([]Item, error) {
 	return out, rows.Err()
 }
 
-func (r *ItemsRepo) GetByID(id int64) (*Item, error) {
+func (r *ItemsRepo) GetByID(guildID string, id int64) (*Item, error) {
 	it := &Item{}
 	err := r.db.QueryRow(`
-		SELECT id, guild_id, name, description, price, sell_price, emoji, stock FROM items WHERE id=?
-	`, id).Scan(&it.ID, &it.GuildID, &it.Name, &it.Description, &it.Price, &it.SellPrice, &it.Emoji, &it.Stock)
+		SELECT id, guild_id, name, description, price, sell_price, emoji, stock
+		FROM items WHERE id=? AND guild_id=?
+	`, id, guildID).Scan(&it.ID, &it.GuildID, &it.Name, &it.Description, &it.Price, &it.SellPrice, &it.Emoji, &it.Stock)
 	if err != nil {
 		return nil, fmt.Errorf("item introuvable")
 	}
@@ -68,7 +69,7 @@ func (r *ItemsRepo) Buy(guildID, userID string, itemID int64) error {
 	defer tx.Rollback()
 
 	var price, stock int64
-	if err := tx.QueryRow(`SELECT price, stock FROM items WHERE id=?`, itemID).Scan(&price, &stock); err != nil {
+	if err := tx.QueryRow(`SELECT price, stock FROM items WHERE id=? AND guild_id=?`, itemID, guildID).Scan(&price, &stock); err != nil {
 		return fmt.Errorf("item introuvable")
 	}
 	if stock == 0 {
