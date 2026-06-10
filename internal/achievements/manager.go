@@ -18,6 +18,9 @@ type Achievement struct {
 var All = []Achievement{
 	// Messages & XP
 	{Key: "first_message", Name: "Premier pas", Description: "Envoie ton premier message", Emoji: "💬"},
+	{Key: "msg_100", Name: "Bavard", Description: "Envoie 100 messages", Emoji: "🗣️"},
+	{Key: "msg_500", Name: "Intarissable", Description: "Envoie 500 messages", Emoji: "📢"},
+	{Key: "msg_1000", Name: "Légende du chat", Description: "Envoie 1000 messages", Emoji: "🏆"},
 	{Key: "level_5", Name: "Apprenti", Description: "Atteins le niveau 5", Emoji: "⭐"},
 	{Key: "level_10", Name: "Confirmé", Description: "Atteins le niveau 10", Emoji: "🌟"},
 	{Key: "level_25", Name: "Expérimenté", Description: "Atteins le niveau 25", Emoji: "💫"},
@@ -33,6 +36,13 @@ var All = []Achievement{
 	{Key: "first_blackjack", Name: "Joueur", Description: "Lance une première partie de blackjack", Emoji: "🃏"},
 	{Key: "blackjack_win", Name: "Chanceux", Description: "Gagne une partie de blackjack", Emoji: "🎉"},
 	{Key: "blackjack_natural", Name: "Naturel", Description: "Fais un blackjack naturel (21 dès le départ)", Emoji: "🎰"},
+	{Key: "bj_win_10", Name: "Sharp", Description: "Gagne 10 parties de blackjack", Emoji: "🎯"},
+	{Key: "bj_win_50", Name: "Card Shark", Description: "Gagne 50 parties de blackjack", Emoji: "🦈"},
+	// Jeux
+	{Key: "slots_jackpot", Name: "Lucky", Description: "Décroches le jackpot maximum aux slots (3×7️⃣)", Emoji: "🍀"},
+	{Key: "dice_double6", Name: "Snake Eyes", Description: "Obtiens un 6 aux dés", Emoji: "🎲"},
+	// Social
+	{Key: "welcome", Name: "Bienvenue", Description: "Rejoins le serveur", Emoji: "👋"},
 }
 
 // byKey is a lookup map built once at init time.

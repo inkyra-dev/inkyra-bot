@@ -20,6 +20,9 @@ func (h *Handler) cmdCoinflip(s *discordgo.Session, i *discordgo.InteractionCrea
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("La mise doit être > 0."))
 		return
 	}
+	if h.enforceMaxBet(s, i, bet) {
+		return
+	}
 	if err := h.gamesMgr.Debit(i.GuildID, i.Member.User.ID, bet); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
@@ -59,6 +62,9 @@ func (h *Handler) cmdDice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("La mise doit être > 0."))
 		return
 	}
+	if h.enforceMaxBet(s, i, bet) {
+		return
+	}
 	if err := h.gamesMgr.Debit(i.GuildID, i.Member.User.ID, bet); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
@@ -69,6 +75,9 @@ func (h *Handler) cmdDice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	if result.Payout > 0 {
 		h.gamesMgr.Credit(i.GuildID, i.Member.User.ID, result.Payout)
+	}
+	if result.Roll == 6 {
+		h.achMgr.Check(i.GuildID, i.Member.User.ID, "dice_double6")
 	}
 
 	color := utils.ColorRed
@@ -99,6 +108,9 @@ func (h *Handler) cmdSlots(s *discordgo.Session, i *discordgo.InteractionCreate)
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("La mise doit être > 0."))
 		return
 	}
+	if h.enforceMaxBet(s, i, bet) {
+		return
+	}
 	if err := h.gamesMgr.Debit(i.GuildID, i.Member.User.ID, bet); err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
@@ -109,6 +121,9 @@ func (h *Handler) cmdSlots(s *discordgo.Session, i *discordgo.InteractionCreate)
 
 	if result.Payout > 0 {
 		h.gamesMgr.Credit(i.GuildID, i.Member.User.ID, result.Payout)
+	}
+	if result.Reels[0] == result.Reels[1] && result.Reels[1] == result.Reels[2] && result.Multi == 20.0 {
+		h.achMgr.Check(i.GuildID, i.Member.User.ID, "slots_jackpot")
 	}
 
 	color := utils.ColorRed
@@ -140,6 +155,9 @@ func (h *Handler) cmdBlackjack(s *discordgo.Session, i *discordgo.InteractionCre
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("La mise doit être > 0."))
 		return
 	}
+	if h.enforceMaxBet(s, i, bet) {
+		return
+	}
 	if h.gamesMgr.BJ.HasActive(i.GuildID, i.Member.User.ID) {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError("Tu as déjà une partie en cours ! Utilise Hit ou Stand."))
 		return
@@ -158,6 +176,7 @@ func (h *Handler) cmdBlackjack(s *discordgo.Session, i *discordgo.InteractionCre
 		h.gamesMgr.BJ.Delete(i.GuildID, i.Member.User.ID)
 		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_natural")
 		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_win")
+		h.checkBJWinAchievements(i.GuildID, i.Member.User.ID)
 		utils.RespondEmbed(s, i.Interaction, utils.EmbedFields(
 			"🃏 Blackjack — Blackjack naturel ! 🎉", "", utils.ColorGreen,
 			utils.Field("Ta main", session.PlayerHandStr(), false),
@@ -224,6 +243,7 @@ func (h *Handler) bjRespond(s *discordgo.Session, i *discordgo.InteractionCreate
 	case games.BJPlayerWin:
 		h.gamesMgr.Credit(i.GuildID, i.Member.User.ID, session.Bet+payout)
 		h.achMgr.Check(i.GuildID, i.Member.User.ID, "blackjack_win")
+		h.checkBJWinAchievements(i.GuildID, i.Member.User.ID)
 	case games.BJPush:
 		h.gamesMgr.Refund(i.GuildID, i.Member.User.ID, session.Bet)
 	// BJBust et BJDealerWin : mise déjà déduite, rien à rembourser
@@ -249,6 +269,34 @@ func (h *Handler) bjRespond(s *discordgo.Session, i *discordgo.InteractionCreate
 			Components: []discordgo.MessageComponent{},
 		},
 	})
+}
+
+// enforceMaxBet retourne true et envoie un message éphémère si la mise dépasse le plafond.
+func (h *Handler) enforceMaxBet(s *discordgo.Session, i *discordgo.InteractionCreate, bet int64) bool {
+	max, err := h.db.GetMaxBet(i.GuildID)
+	if err != nil || max == 0 {
+		return false
+	}
+	if bet > max {
+		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(
+			fmt.Sprintf("La mise maximale est de **%s** 🪙.", coins(max)),
+		))
+		return true
+	}
+	return false
+}
+
+func (h *Handler) checkBJWinAchievements(guildID, userID string) {
+	wins, err := h.statsRepo.IncrementBJWins(guildID, userID)
+	if err != nil {
+		return
+	}
+	switch wins {
+	case 10:
+		h.achMgr.Check(guildID, userID, "bj_win_10")
+	case 50:
+		h.achMgr.Check(guildID, userID, "bj_win_50")
+	}
 }
 
 func bjEmbed(s *games.BlackjackSession, reveal bool) *discordgo.MessageEmbed {

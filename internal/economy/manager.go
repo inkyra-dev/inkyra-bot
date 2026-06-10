@@ -10,14 +10,12 @@ import (
 )
 
 const (
-	dailyCooldown     = 24 * time.Hour
 	dailyStreakWindow = 48 * time.Hour
 	dailyBaseReward   = 200
 	dailyStreakBonus  = 10
 	dailyMaxReward    = 600
 	dailyStreakTarget  = 7
 
-	workCooldown  = 4 * time.Hour
 	workRewardMin = 50
 	workRewardMax = 200
 
@@ -69,15 +67,15 @@ type DailyResult struct {
 	Streak int
 }
 
-func (m *Manager) Daily(guildID, userID string) (*DailyResult, error) {
+func (m *Manager) Daily(guildID, userID string, cooldown time.Duration) (*DailyResult, error) {
 	u, err := m.econRepo.GetOrCreate(guildID, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	now := time.Now()
-	if u.LastDaily != nil && now.Sub(*u.LastDaily) < dailyCooldown {
-		remaining := dailyCooldown - now.Sub(*u.LastDaily)
+	if u.LastDaily != nil && now.Sub(*u.LastDaily) < cooldown {
+		remaining := cooldown - now.Sub(*u.LastDaily)
 		return nil, fmt.Errorf("revenez dans **%s**", formatDuration(remaining))
 	}
 
@@ -111,14 +109,14 @@ type WorkResult struct {
 	Action string
 }
 
-func (m *Manager) Work(guildID, userID string) (*WorkResult, error) {
+func (m *Manager) Work(guildID, userID string, cooldown time.Duration) (*WorkResult, error) {
 	u, err := m.econRepo.GetOrCreate(guildID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	if u.LastWork != nil && time.Since(*u.LastWork) < workCooldown {
-		remaining := workCooldown - time.Since(*u.LastWork)
+	if u.LastWork != nil && time.Since(*u.LastWork) < cooldown {
+		remaining := cooldown - time.Since(*u.LastWork)
 		return nil, fmt.Errorf("vous avez déjà travaillé, revenez dans **%s**", formatDuration(remaining))
 	}
 

@@ -31,13 +31,17 @@ func main() {
 	dg.Identify.Intents = discordgo.IntentsGuilds |
 		discordgo.IntentsGuildMessages |
 		discordgo.IntentsGuildVoiceStates |
-		discordgo.IntentsGuildMembers
+		discordgo.IntentsGuildMembers |
+		discordgo.IntentsGuildBans
 
 	handler := commands.NewHandler(dg, cfg, db)
 
 	dg.AddHandler(events.Ready(handler))
 	dg.AddHandler(events.InteractionCreate(handler))
 	dg.AddHandler(events.VoiceStateUpdate(handler))
+	dg.AddHandler(events.GuildMemberAdd(handler))
+	dg.AddHandler(events.GuildBanAdd(handler))
+	dg.AddHandler(events.GuildBanRemove(handler))
 	dg.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		handler.HandleMessageCreate(s, m)
 	})

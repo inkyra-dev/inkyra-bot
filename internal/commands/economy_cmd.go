@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -36,8 +37,22 @@ func (h *Handler) cmdBalance(s *discordgo.Session, i *discordgo.InteractionCreat
 	utils.RespondEmbed(s, i.Interaction, embed)
 }
 
+func (h *Handler) dailyCooldown(guildID string) time.Duration {
+	if hrs, err := h.db.GetDailyCooldownHours(guildID); err == nil && hrs > 0 {
+		return time.Duration(hrs) * time.Hour
+	}
+	return 24 * time.Hour
+}
+
+func (h *Handler) workCooldown(guildID string) time.Duration {
+	if hrs, err := h.db.GetWorkCooldownHours(guildID); err == nil && hrs > 0 {
+		return time.Duration(hrs) * time.Hour
+	}
+	return 4 * time.Hour
+}
+
 func (h *Handler) cmdDaily(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	result, err := h.econMgr.Daily(i.GuildID, i.Member.User.ID)
+	result, err := h.econMgr.Daily(i.GuildID, i.Member.User.ID, h.dailyCooldown(i.GuildID))
 	if err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
@@ -57,7 +72,7 @@ func (h *Handler) cmdDaily(s *discordgo.Session, i *discordgo.InteractionCreate)
 }
 
 func (h *Handler) cmdWork(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	result, err := h.econMgr.Work(i.GuildID, i.Member.User.ID)
+	result, err := h.econMgr.Work(i.GuildID, i.Member.User.ID, h.workCooldown(i.GuildID))
 	if err != nil {
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
@@ -215,23 +230,11 @@ func econLeaderboardBody(s *discordgo.Session, guildID string, entries []reposit
 func (h *Handler) cmdEconLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	page := 1
 	if opts := i.ApplicationCommandData().Options; len(opts) > 0 {
-		page = int(opts[0].IntValue())
-		if page < 1 {
-			page = 1
+		if v := int(opts[0].IntValue()); v >= 1 {
+			page = v
 		}
 	}
-
-	const pageSize = 10
-	offset := (page - 1) * pageSize
-	entries, err := h.econMgr.GetLeaderboard(i.GuildID, pageSize, offset)
-	if err != nil || len(entries) == 0 {
-		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée économique pour ce serveur.")
-		return
-	}
-
-	total, _ := h.econMgr.Count(i.GuildID)
-	totalPages := (int(total) + pageSize - 1) / pageSize
-	respondLeaderboard(s, i, "💰 Classement Économie", econLeaderboardBody(s, i.GuildID, entries, offset), utils.ColorYellow, page, totalPages, "ecolb", false)
+	h.showEconLeaderboard(s, i, page, false)
 }
 
 func (h *Handler) handleEcoLeaderboardPage(s *discordgo.Session, i *discordgo.InteractionCreate, id string) {
@@ -239,22 +242,10 @@ func (h *Handler) handleEcoLeaderboardPage(s *discordgo.Session, i *discordgo.In
 	if len(parts) != 2 {
 		return
 	}
-
 	var page int
 	fmt.Sscanf(parts[1], "%d", &page)
 	if page < 1 {
 		page = 1
 	}
-
-	const pageSize = 10
-	offset := (page - 1) * pageSize
-	entries, err := h.econMgr.GetLeaderboard(i.GuildID, pageSize, offset)
-	if err != nil || len(entries) == 0 {
-		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée.")
-		return
-	}
-
-	total, _ := h.econMgr.Count(i.GuildID)
-	totalPages := (int(total) + pageSize - 1) / pageSize
-	respondLeaderboard(s, i, "💰 Classement Économie", econLeaderboardBody(s, i.GuildID, entries, offset), utils.ColorYellow, page, totalPages, "ecolb", true)
+	h.showEconLeaderboard(s, i, page, true)
 }

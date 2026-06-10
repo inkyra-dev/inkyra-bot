@@ -100,7 +100,55 @@ func (db *DB) migrate() error {
 		return err
 	}
 	if colExists == 0 {
-		_, err = db.Exec(`ALTER TABLE user_xp ADD COLUMN last_xp_at INTEGER NOT NULL DEFAULT 0`)
+		if _, err := db.Exec(`ALTER TABLE user_xp ADD COLUMN last_xp_at INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
 	}
+
+	// Add moderation/auto-roles + config columns to guild_settings (idempotent).
+	for _, col := range []struct{ name, typ string }{
+		{"auto_role_id", "TEXT"},
+		{"roles_channel_id", "TEXT"},
+		{"roles_message_id", "TEXT"},
+		{"levelup_channel_id", "TEXT"},
+		{"daily_cooldown_hours", "INTEGER"},
+		{"work_cooldown_hours", "INTEGER"},
+		{"max_bet", "INTEGER"},
+	} {
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('guild_settings') WHERE name=?`, col.name).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			if _, err := db.Exec(`ALTER TABLE guild_settings ADD COLUMN ` + col.name + ` ` + col.typ); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Role-selection buttons (idempotent).
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS role_buttons (
+			id       INTEGER PRIMARY KEY AUTOINCREMENT,
+			guild_id TEXT NOT NULL,
+			role_id  TEXT NOT NULL,
+			label    TEXT NOT NULL,
+			emoji    TEXT NOT NULL DEFAULT '',
+			UNIQUE(guild_id, role_id)
+		)
+	`); err != nil {
+		return err
+	}
+
+	// Per-user stats counters for achievement thresholds (idempotent).
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS user_stats (
+			guild_id      TEXT    NOT NULL,
+			user_id       TEXT    NOT NULL,
+			message_count INTEGER NOT NULL DEFAULT 0,
+			bj_wins       INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (guild_id, user_id)
+		)
+	`)
 	return err
 }

@@ -61,23 +61,48 @@ func (h *Handler) cmdRank(s *discordgo.Session, i *discordgo.InteractionCreate) 
 }
 
 func (h *Handler) cmdLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	leaderType := "xp"
 	page := 1
-	if opts := i.ApplicationCommandData().Options; len(opts) > 0 {
-		page = int(opts[0].IntValue())
-		if page < 1 {
-			page = 1
+	for _, opt := range i.ApplicationCommandData().Options {
+		switch opt.Name {
+		case "type":
+			leaderType = opt.StringValue()
+		case "page":
+			if v := int(opt.IntValue()); v >= 1 {
+				page = v
+			}
 		}
 	}
 
+	if leaderType == "economie" {
+		h.showEconLeaderboard(s, i, page, false)
+	} else {
+		h.showXPLeaderboard(s, i, page, false)
+	}
+}
+
+func (h *Handler) showXPLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate, page int, update bool) {
 	entries, total, err := h.xpMgr.GetLeaderboard(i.GuildID, page)
 	if err != nil || len(entries) == 0 {
 		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée XP pour ce serveur.")
 		return
 	}
-
 	const pageSize = 10
 	totalPages := (int(total) + pageSize - 1) / pageSize
-	respondLeaderboard(s, i, "🏆 Classement XP", xpLeaderboardBody(s, i.GuildID, entries), utils.ColorPurple, page, totalPages, "xplb", false)
+	respondLeaderboard(s, i, "🏆 Classement XP", xpLeaderboardBody(s, i.GuildID, entries), utils.ColorPurple, page, totalPages, "xplb", update)
+}
+
+func (h *Handler) showEconLeaderboard(s *discordgo.Session, i *discordgo.InteractionCreate, page int, update bool) {
+	const pageSize = 10
+	offset := (page - 1) * pageSize
+	entries, err := h.econMgr.GetLeaderboard(i.GuildID, pageSize, offset)
+	if err != nil || len(entries) == 0 {
+		utils.RespondEphemeral(s, i.Interaction, "Aucune donnée économique pour ce serveur.")
+		return
+	}
+	total, _ := h.econMgr.Count(i.GuildID)
+	totalPages := (int(total) + pageSize - 1) / pageSize
+	respondLeaderboard(s, i, "💰 Classement Économie", econLeaderboardBody(s, i.GuildID, entries, offset), utils.ColorYellow, page, totalPages, "ecolb", update)
 }
 
 // ── Admin XP ──────────────────────────────────────────────────────────────────
@@ -150,6 +175,10 @@ func (h *Handler) cmdPrestige(s *discordgo.Session, i *discordgo.InteractionCrea
 		utils.RespondEmbedEphemeral(s, i.Interaction, utils.EmbedError(err.Error()))
 		return
 	}
-	utils.RespondEmbed(s, i.Interaction,
-		utils.Embed("⭐ Prestige !", fmt.Sprintf("<@%s> a prestigié ! XP remis à zéro.", i.Member.User.ID), utils.ColorPurple))
+	embed := utils.Embed("⭐ Prestige !", fmt.Sprintf("<@%s> a prestigié ! XP remis à zéro.", i.Member.User.ID), utils.ColorPurple)
+	utils.RespondEmbed(s, i.Interaction, embed)
+
+	if ch, err := h.db.GetLevelUpChannelID(i.GuildID); err == nil && ch != "" && ch != i.ChannelID {
+		s.ChannelMessageSendEmbed(ch, embed)
+	}
 }

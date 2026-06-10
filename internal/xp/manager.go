@@ -18,13 +18,20 @@ const (
 	messageCooldown = 60 // seconds
 )
 
-type Manager struct {
-	repo   *repositories.XPRepo
-	achMgr *achievements.Manager
+// ChannelSettings est implémenté par *database.DB pour lire levelup_channel_id.
+type ChannelSettings interface {
+	GetLevelUpChannelID(guildID string) (string, error)
 }
 
-func NewManager(repo *repositories.XPRepo, achMgr *achievements.Manager) *Manager {
-	return &Manager{repo: repo, achMgr: achMgr}
+type Manager struct {
+	repo      *repositories.XPRepo
+	statsRepo *repositories.StatsRepo
+	achMgr    *achievements.Manager
+	settings  ChannelSettings
+}
+
+func NewManager(repo *repositories.XPRepo, statsRepo *repositories.StatsRepo, achMgr *achievements.Manager, settings ChannelSettings) *Manager {
+	return &Manager{repo: repo, statsRepo: statsRepo, achMgr: achMgr, settings: settings}
 }
 
 var levelAchievements = map[int]string{
@@ -33,12 +40,24 @@ var levelAchievements = map[int]string{
 
 // HandleMessage est appelé à chaque message d'utilisateur pour attribuer de l'XP.
 func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID string) {
+	// Compteur brut de messages (sans cooldown) pour les achievements.
+	if n, err := m.statsRepo.IncrementMessages(guildID, userID); err == nil {
+		switch n {
+		case 1:
+			m.achMgr.Check(guildID, userID, "first_message")
+		case 100:
+			m.achMgr.Check(guildID, userID, "msg_100")
+		case 500:
+			m.achMgr.Check(guildID, userID, "msg_500")
+		case 1000:
+			m.achMgr.Check(guildID, userID, "msg_1000")
+		}
+	}
+
 	ok, err := m.repo.CheckAndSetCooldown(guildID, userID, messageCooldown)
 	if err != nil || !ok {
 		return
 	}
-
-	m.achMgr.Check(guildID, userID, "first_message")
 
 	prev, err := m.repo.Get(guildID, userID)
 	if err != nil {
@@ -65,7 +84,14 @@ func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID
 	}
 }
 
-func (m *Manager) announceLevelUp(s *discordgo.Session, guildID, userID, channelID string, level, prestige int) {
+func (m *Manager) announceLevelUp(s *discordgo.Session, guildID, userID, fallbackChannelID string, level, prestige int) {
+	target := fallbackChannelID
+	if m.settings != nil {
+		if ch, err := m.settings.GetLevelUpChannelID(guildID); err == nil && ch != "" {
+			target = ch
+		}
+	}
+
 	desc := fmt.Sprintf("<@%s> a atteint le **niveau %d** ! 🎉", userID, level)
 	embed := utils.EmbedFields("⬆️ Level Up !", desc, utils.ColorPurple,
 		utils.Field("Niveau", fmt.Sprintf("**%d**", level), true),
@@ -73,7 +99,7 @@ func (m *Manager) announceLevelUp(s *discordgo.Session, guildID, userID, channel
 	if prestige > 0 {
 		embed.Fields = append(embed.Fields, utils.Field("Prestige", fmt.Sprintf("⭐ %d", prestige), true))
 	}
-	s.ChannelMessageSendEmbed(channelID, embed)
+	s.ChannelMessageSendEmbed(target, embed)
 }
 
 // Get retourne (ou crée) les données XP d'un utilisateur.
