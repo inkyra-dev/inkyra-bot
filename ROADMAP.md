@@ -4,18 +4,20 @@
 
 ---
 
-## Statut actuel — V1.0.1 ✅
+## Statut actuel — V1.0.2 ✅
 
-| Système                | État                                                |
-| ---------------------- | --------------------------------------------------- |
-| Tickets                | ✅ Complet                                          |
-| XP / Levels / Prestige | ✅ Complet — cooldowns persistés en SQLite          |
-| Économie               | ✅ Complet                                          |
-| Mini-jeux              | ✅ Complet — sessions blackjack purgées au restart  |
-| Musique                | ✅ Docker/Linux — stub Windows                      |
-| Achievements           | ✅ Complet — 14 achievements, déclencheurs branchés |
-| Sécurité & robustesse  | ✅ Audit v1.0.1 appliqué                            |
-| Tests                  | ❌ Aucun                                            |
+| Système                | État                                                          |
+| ---------------------- | ------------------------------------------------------------- |
+| Tickets                | ✅ Complet                                                    |
+| XP / Levels / Prestige | ✅ Complet — cooldowns persistés en SQLite, canal configurable|
+| Économie               | ✅ Complet — cooldowns daily/work configurables par serveur   |
+| Mini-jeux              | ✅ Complet — mise max configurable, achievements jeux         |
+| Musique                | ✅ Docker/Linux — stub Windows                                |
+| Achievements           | ✅ Complet — 22 achievements, compteurs user_stats            |
+| Modération             | ✅ Anti-spam, auto-rôles, logs bans/timeouts                  |
+| Configuration          | ✅ /config + 5 réglages par serveur                           |
+| Sécurité & robustesse  | ✅ Audit v1.0.1 appliqué                                      |
+| Tests                  | ❌ Aucun                                                      |
 
 ---
 
@@ -58,17 +60,35 @@
 
 ---
 
-## V1.0.2 — Améliorations UX & gameplay
+## V1.0.2 — Améliorations UX & gameplay ✅
 
-- [ ] Anti-spam (rate limiting messages, mute temporaire automatique)
-- [ ] Auto-roles (rôle attribué à l'arrivée, rôles par reaction/bouton)
-- [ ] Logs de modération (kicks, bans, timeouts) dans un canal dédié
-- [ ] Tests unitaires : `TotalXPForLevel`, `BJ.Payout`, daily streak, cooldown XP
-- [ ] Achievements supplémentaires (streaks daily, prestige, wins en jeux)
-- [ ] Notifications de level-up configurables (canal dédié ou DM)
-- [ ] Cooldowns work/daily configurables via `guild_settings`
-- [ ] Plafond de mise configurable dans les mini-jeux
-- [ ] Embeds avancés et menus de sélection (select menus Discord)
+### 🛡️ Modération
+
+- [x] Anti-spam — rate-limit >5 messages/5s, timeout Discord natif 5 min, warning éphémère, log dans `LOG_CHANNEL_ID`
+- [x] Auto-rôles — rôle attribué automatiquement à l'arrivée (`/setautorole`)
+- [x] Embed rôles interactif — `/setuproles` + `/addrolebutton` + toggle boutons en mémoire
+- [x] Logs de modération — bans/débans loggués avec modérateur (audit log Discord), timeouts anti-spam loggués
+
+### ⚙️ Configuration par serveur
+
+- [x] Canal level-up configurable — `/setlevelupchannel`, annonces prestige redirigées
+- [x] Cooldown `/daily` configurable — `/setdailycooldown` (1–168h, défaut 24h)
+- [x] Cooldown `/work` configurable — `/setworkcooldown` (1–168h, défaut 4h)
+- [x] Mise maximale jeux — `/setmaxbet` (0 = illimité), appliqué sur les 4 mini-jeux
+- [x] `/config` — embed éphémère avec les 9 réglages du serveur
+
+### 🏆 Achievements (14 → 22)
+
+- [x] `msg_100`, `msg_500`, `msg_1000` — compteur messages dans `user_stats`
+- [x] `bj_win_10`, `bj_win_50` — compteur victoires BJ dans `user_stats`
+- [x] `slots_jackpot` — triple jackpot (×20) aux machines à sous
+- [x] `dice_double6` — dé sur 6
+- [x] `welcome` — premier message après l'arrivée sur le serveur
+
+### 🎖️ Leaderboard unifié
+
+- [x] `/leaderboard type:xp|economie` — une seule commande, pagination partagée
+- [x] Helpers `showXPLeaderboard` / `showEconLeaderboard` — zéro duplication de rendu
 
 ---
 
@@ -78,6 +98,7 @@
 - [ ] Métriques basiques (commandes les plus utilisées, uptime)
 - [ ] Health check endpoint HTTP minimal (pour Uptime Kuma)
 - [ ] Validation config au démarrage — message clair si TOKEN vide
+- [ ] Tests unitaires : `TotalXPForLevel`, `BJ.Payout`, daily streak, cooldown XP
 
 ---
 

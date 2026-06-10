@@ -16,15 +16,16 @@ cmd/
   main.go                      ← point d'entrée, wiring
 internal/
   config/                      ← chargement .env
-  database/                    ← connexion SQLite, migrations, CRUD tickets
-  repositories/                ← CRUD SQL : xp, economy, items, bj, achievements
+  database/                    ← connexion SQLite, migrations, CRUD tickets + settings
+  repositories/                ← CRUD SQL : xp, economy, items, bj, achievements, stats
   xp/                          ← formule MEE6, level-up, prestige, progress bar
   economy/                     ← daily, work, dépôt/retrait, shop, transferts
   games/                       ← coinflip, dice, slots, blackjack (sessions mémoire)
-  achievements/                ← catalogue statique + manager (fire-and-forget)
+  achievements/                ← catalogue statique (22 achievements) + manager fire-and-forget
+  moderation/                  ← anti-spam, auto-rôles, logs de modération
   tickets/                     ← ouverture/fermeture canaux, transcripts TXT
   music/                       ← player par guild, queue, yt-dlp, stub Windows
-  events/                      ← adaptateurs discordgo (ready, interaction, voice)
+  events/                      ← adaptateurs discordgo (ready, interaction, voice, member, bans)
   commands/                    ← toutes les slash commands + routing central
   utils/                       ← helpers embeds + réponses Discord
 data/
@@ -45,6 +46,17 @@ TICKET_CATEGORY_ID=
 LOG_CHANNEL_ID=
 DB_PATH=./data/bot.db
 ```
+
+Les paramètres suivants sont configurables **par serveur** via les commandes admin (stockés dans `guild_settings`) :
+
+| Paramètre | Commande | Défaut |
+|---|---|---|
+| Canal level-up | `/setlevelupchannel` | Canal du message |
+| Cooldown `/daily` | `/setdailycooldown` | 24h |
+| Cooldown `/work` | `/setworkcooldown` | 4h |
+| Mise maximale jeux | `/setmaxbet` | Illimité |
+| Rôle automatique | `/setautorole` | — |
+| Embed rôles | `/setuproles` | — |
 
 ## Prérequis
 
@@ -87,18 +99,18 @@ docker compose up -d --build
 | `/removeuser <user>`  | Retire un utilisateur          |
 
 ### XP
-| Commande                    | Description                              |
-|-----------------------------|------------------------------------------|
-| `/rank [user]`              | Profil XP (niveau, rang, barre)          |
-| `/leaderboard [page]`       | Classement XP paginé                     |
-| `/prestige`                 | Prestige au niveau 100 (reset XP)        |
+| Commande                        | Description                              |
+|---------------------------------|------------------------------------------|
+| `/rank [user]`                  | Profil XP (niveau, rang, barre)          |
+| `/leaderboard [type] [page]`    | Classement XP ou Économie paginé         |
+| `/prestige`                     | Prestige au niveau 100 (reset XP)        |
 
 ### Économie
 | Commande               | Description                              |
 |------------------------|------------------------------------------|
 | `/balance [user]`      | Affiche portefeuille + banque            |
 | `/daily`               | Récompense quotidienne (streak bonus)    |
-| `/work`                | Travailler (cooldown 4h)                 |
+| `/work`                | Travailler (cooldown configurable, 4h)   |
 | `/deposit <montant>`   | Déposer en banque (`all` supporté)       |
 | `/withdraw <montant>`  | Retirer de la banque (`all` supporté)    |
 | `/pay <user> <montant>`| Payer un autre utilisateur               |
@@ -106,20 +118,40 @@ docker compose up -d --build
 | `/buy <id>`            | Acheter un item                          |
 | `/sell <id>`           | Revendre un item                         |
 | `/inventory`           | Affiche l'inventaire                     |
-| `/econleaderboard`     | Classement économique paginé             |
+| `/econleaderboard`     | Alias classement économique paginé       |
 
 ### Mini-jeux
-| Commande                | Description                              |
-|-------------------------|------------------------------------------|
-| `/coinflip <choix> <mise>` | Pile ou face                          |
-| `/dice <mise>`          | Lance un dé (×0 à ×3)                   |
-| `/slots <mise>`         | Machines à sous (7 symboles)             |
-| `/blackjack <mise>`     | Blackjack interactif (Hit / Stand)       |
+| Commande                        | Description                              |
+|---------------------------------|------------------------------------------|
+| `/coinflip <choix> <mise>`      | Pile ou face                             |
+| `/dice <mise>`                  | Lance un dé (×0 à ×3)                   |
+| `/slots <mise>`                 | Machines à sous (7 symboles)             |
+| `/blackjack <mise>`             | Blackjack interactif (Hit / Stand)       |
+
+> La mise est vérifiée contre le plafond `/setmaxbet` si configuré.
 
 ### Achievements
-| Commande              | Description                              |
-|-----------------------|------------------------------------------|
-| `/achievements [user]`| Affiche les succès débloqués             |
+| Commande               | Description                              |
+|------------------------|------------------------------------------|
+| `/achievements [user]` | Affiche les 22 succès (débloqués/verrouillés) |
+
+### Modération _(admin)_
+| Commande                          | Description                                   |
+|-----------------------------------|-----------------------------------------------|
+| `/setautorole <role>`             | Rôle attribué automatiquement à l'arrivée     |
+| `/setuproles`                     | Poste l'embed de sélection de rôles (épinglé) |
+| `/addrolebutton <role> <label> [emoji]` | Ajoute un bouton toggle à l'embed rôles  |
+
+> Les bans/débans et les timeouts anti-spam sont loggués dans `LOG_CHANNEL_ID`.
+
+### Configuration _(admin)_
+| Commande                      | Description                                      |
+|-------------------------------|--------------------------------------------------|
+| `/setlevelupchannel <canal>`  | Canal dédié pour les annonces level-up & prestige|
+| `/setdailycooldown <heures>`  | Cooldown `/daily` (1–168h, défaut 24h)           |
+| `/setworkcooldown <heures>`   | Cooldown `/work` (1–168h, défaut 4h)             |
+| `/setmaxbet <montant>`        | Mise maximale pour les jeux (0 = illimité)       |
+| `/config`                     | Affiche tous les réglages du serveur (éphémère)  |
 
 ### Admin
 | Commande                   | Description                          |
