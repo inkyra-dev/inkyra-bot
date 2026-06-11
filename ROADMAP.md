@@ -4,20 +4,24 @@
 
 ---
 
-## Statut actuel — V1.0.2 ✅
+## Statut actuel — V1.0.3 ✅ (partiel)
 
-| Système                | État                                                          |
-| ---------------------- | ------------------------------------------------------------- |
-| Tickets                | ✅ Complet                                                    |
-| XP / Levels / Prestige | ✅ Complet — cooldowns persistés en SQLite, canal configurable|
-| Économie               | ✅ Complet — cooldowns daily/work configurables par serveur   |
-| Mini-jeux              | ✅ Complet — mise max configurable, achievements jeux         |
-| Musique                | ✅ Docker/Linux — stub Windows                                |
-| Achievements           | ✅ Complet — 22 achievements, compteurs user_stats            |
-| Modération             | ✅ Anti-spam, auto-rôles, logs bans/timeouts                  |
-| Configuration          | ✅ /config + 5 réglages par serveur                           |
-| Sécurité & robustesse  | ✅ Audit v1.0.1 appliqué                                      |
-| Tests                  | ❌ Aucun                                                      |
+| Système                | État |
+| ---------------------- | ---- |
+| Tickets                | ✅ Complet |
+| XP / Levels / Prestige | ✅ Complet — cooldowns persistés en SQLite, canal configurable |
+| Économie               | ✅ Complet — cooldowns daily/work configurables par serveur |
+| Mini-jeux              | ✅ Complet — mise max configurable, achievements jeux |
+| Musique                | ✅ Docker/Linux — stub Windows |
+| Achievements           | ✅ Complet — 22 achievements, compteurs user_stats |
+| Modération             | ✅ Anti-spam, auto-rôles, logs bans/timeouts |
+| Configuration          | ✅ /config + 5 réglages par serveur |
+| Logging structuré      | ✅ slog complet, JSON/text, niveaux configurables |
+| Métriques              | ✅ Compteurs atomiques, /stats enrichi, top-5 commandes |
+| Health check HTTP      | ✅ /health + /ready, HEALTH_PORT configurable |
+| Validation config      | ✅ TOKEN/GUILD_ID fatals, LOG_LEVEL warn, DB_PATH write-check |
+| Graceful shutdown      | ✅ Ordre garanti, timeout 10s, durée loggée |
+| Tests                  | ❌ Aucun |
 
 ---
 
@@ -64,7 +68,7 @@
 
 ### 🛡️ Modération
 
-- [x] Anti-spam — rate-limit >5 messages/5s, timeout Discord natif 5 min, warning éphémère, log dans `LOG_CHANNEL_ID`
+- [x] Anti-spam — rate-limit >5 messages/5s, timeout Discord natif 5 min, warning, log dans `LOG_CHANNEL_ID`
 - [x] Auto-rôles — rôle attribué automatiquement à l'arrivée (`/setautorole`)
 - [x] Embed rôles interactif — `/setuproles` + `/addrolebutton` + toggle boutons en mémoire
 - [x] Logs de modération — bans/débans loggués avec modérateur (audit log Discord), timeouts anti-spam loggués
@@ -92,13 +96,39 @@
 
 ---
 
-## V1.0.3 — Robustesse & observabilité
+## V1.0.3 — Robustesse & observabilité ✅ (partiel)
 
-- [ ] Structured logging (`slog`) avec niveaux DEBUG/INFO/ERROR
-- [ ] Métriques basiques (commandes les plus utilisées, uptime)
-- [ ] Health check endpoint HTTP minimal (pour Uptime Kuma)
-- [ ] Validation config au démarrage — message clair si TOKEN vide
+### 📋 Logging structuré
+
+- [x] Migration complète `log.Printf` → `slog` (14 fichiers, zéro import `"log"` résiduel)
+- [x] `internal/logger` — handler JSON/text configurable via `LOG_FORMAT`, niveau via `LOG_LEVEL`
+- [x] Attribut `"component"` sur chaque log + contexte pertinent (`guild_id`, `user_id`, `command`, `error`)
+
+### 📊 Métriques
+
+- [x] `internal/metrics` — singleton Go pur, compteurs `atomic.Int64`, zéro dépendance externe
+- [x] `IncrCommand(name)` / `IncrMessage()` / `IncrSpamTimeout()` / `IncrDBError()` instrumentés
+- [x] `/stats` enrichi — uptime formaté, messages traités, top-5 commandes, erreurs DB
+
+### 🏥 Health check HTTP
+
+- [x] `GET /health` — JSON `{"status","uptime","guilds","version"}`
+- [x] `GET /ready` — 200/503 selon état de la session Discord
+- [x] `HEALTH_PORT` configurable (défaut 8080, 0 = désactivé)
+- [x] Arrêt propre dans la séquence de shutdown
+
+### 🔧 Validation config & shutdown
+
+- [x] TOKEN/GUILD_ID → `slog.Error` + `os.Exit(1)` avec message explicite
+- [x] LOG_LEVEL invalide → `slog.Warn` + fallback `info`
+- [x] DB_PATH → write-check réel (`os.CreateTemp`)
+- [x] Ordre shutdown garanti : health → `dg.Close` → `handler.Shutdown` → `db.Close` — timeout 10s
+- [x] Constante `Version = "1.0.3"` dans `config/config.go`
+
+### ❌ Reporté à V1.0.4
+
 - [ ] Tests unitaires : `TotalXPForLevel`, `BJ.Payout`, daily streak, cooldown XP
+- [ ] `IncrDBError` coverage complète (economy, tickets, BJ actuellement non couverts)
 
 ---
 

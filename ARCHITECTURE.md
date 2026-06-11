@@ -4,6 +4,7 @@
 
 ```
 cmd/main.go
+    │  ← config.Load() → logger.Init() → DB → Handler → dg.Open() → health server
     │
     ├── internal/events/          ← adaptateurs fins discordgo
     │       ready.go              → RegisterCommands() au démarrage
@@ -43,14 +44,18 @@ cmd/main.go
 
 Toutes les couches communiquent **vers le bas uniquement** : `commands` → `managers` → `repositories` → `database`. La couche `repositories` ne connaît pas `commands` ni les managers.
 
+Les packages `internal/logger` et `internal/metrics` sont des singletons transversaux — importés directement là où ils sont nécessaires, sans passer par le Handler.
+
 ---
 
 ## Packages
 
 | Package | Responsabilité |
 |---|---|
-| `cmd` | Wiring : config → DB → Handler → discordgo → signal SIGINT |
-| `internal/config` | Chargement `.env` via godotenv |
+| `cmd` | Wiring : config → logger → DB → Handler → discordgo → health server → signal SIGINT |
+| `internal/config` | Chargement `.env` via godotenv, validation TOKEN/GUILD_ID (fatals), LOG_LEVEL (warn+fallback), DB_PATH (write-check) ; constante `Version = "1.0.3"` |
+| `internal/logger` | Init du handler slog global (`slog.SetDefault`) ; lit `LOG_FORMAT` (json\|text) et `LOG_LEVEL` depuis l'env |
+| `internal/metrics` | Singleton `GetMetrics()` avec compteurs `atomic.Int64` ; `IncrCommand/Message/SpamTimeout/DBError` ; `Snapshot()` top-5 commandes + uptime ; `FormatUptime()` |
 | `internal/database` | Connexion SQLite (modernc pure Go), WAL mode, auto-migrations au démarrage |
 | `internal/repositories` | SQL CRUD : `xp_repo`, `economy_repo`, `items_repo`, `bj_repo`, `achievements_repo`, `stats_repo` |
 | `internal/xp` | Formule MEE6 (`5n²+50n+100`), cooldown XP persisté en DB (`last_xp_at`), prestige niveau 100, canal level-up configurable |
@@ -71,7 +76,7 @@ Toutes les couches communiquent **vers le bas uniquement** : `commands` → `man
 `internal/commands/handler.go` est le hub unique :
 
 - `register()` — table `map[string]CommandFunc` peuplée au démarrage
-- `Handle()` — dispatch par nom pour les slash commands, par `CustomID` pour les boutons
+- `Handle()` — dispatch par nom pour les slash commands (+ `metrics.IncrCommand(name)`), par `CustomID` pour les boutons
 - `handleComponent()` — boutons ticket (`close_ticket`, `transcript_ticket`), blackjack (`bj_hit`, `bj_stand`), pagination leaderboard (`xplb:N`, `ecolb:N`), toggle rôles (`role_toggle:<roleID>`)
 
 **Ajouter une slash command :** 1) `register()` dans `handler.go`, 2) `ApplicationCommand` dans `RegisterCommands()`, 3) méthode dans le `*_cmd.go` approprié.
@@ -92,12 +97,42 @@ La pagination XP et économie passe par des helpers privés partagés entre comm
 
 | Événement | Handler | Rôle |
 |---|---|---|
-| `MessageCreate` | `events.MessageCreate` | XP + anti-spam (antispam.Monitor.Check) |
-| `InteractionCreate` | `events.InteractionCreate` | Slash commands + boutons |
+| `MessageCreate` | `events.MessageCreate` | XP (`metrics.IncrMessage`) + anti-spam (`Monitor.Check` → `metrics.IncrSpamTimeout`) |
+| `InteractionCreate` | `events.InteractionCreate` | Slash commands (`metrics.IncrCommand`) + boutons |
 | `VoiceStateUpdate` | `events.VoiceStateUpdate` | Cleanup musique |
 | `GuildMemberAdd` | `events.GuildMemberAdd` | Auto-rôle + achievement `welcome` |
 | `GuildBanAdd` | `events.GuildBanAdd` | Log ban dans `LOG_CHANNEL_ID` |
 | `GuildBanRemove` | `events.GuildBanRemove` | Log déban dans `LOG_CHANNEL_ID` |
+
+---
+
+## Observabilité
+
+### Logging (`internal/logger`)
+
+`logger.Init()` est appelé une fois dans `config.Load()`, après `godotenv.Load()`, pour que les vars `.env` soient disponibles. Il appelle `slog.SetDefault()` avec un `slog.NewJSONHandler` ou `slog.NewTextHandler` selon `LOG_FORMAT`. Le niveau est parsé depuis `LOG_LEVEL` avec fallback `info`.
+
+Chaque appel slog porte un attribut `"component"` + contexte pertinent :
+```go
+slog.Error("repo.Open échoué", "component", "blackjack", "guild_id", guildID, "user_id", userID, "error", err)
+```
+
+### Métriques (`internal/metrics`)
+
+Singleton `sync.Once`, zéro dépendance externe. Counters atomiques (`atomic.Int64`) pour messages, spam timeouts et erreurs DB. La map commandes utilise `sync.RWMutex` + lazy init par commande.
+
+`Snapshot()` retourne une vue cohérente avec top-5 commandes triées par usage — consommée par `/stats` et `/health`.
+
+### Health server (`cmd/main.go`)
+
+Démarré après `dg.Open()` si `HEALTH_PORT != 0` (défaut 8080). Deux routes :
+
+| Route | Logique |
+|---|---|
+| `GET /health` | Lit `metrics.Snapshot()` + `dg.State.Guilds` (avec RLock) ; répond JSON |
+| `GET /ready` | Vérifie `dg.State.User != nil` (avec RLock) ; `200` ou `503` |
+
+Le serveur est le premier arrêté dans la séquence de shutdown.
 
 ---
 
@@ -107,14 +142,13 @@ La pagination XP et économie passe par des helpers privés partagés entre comm
 
 - `Monitor` maintient un compteur `map[chanKey]int` (guild+channel+user) en mémoire avec `sync.Mutex`
 - Un `time.Ticker` à 5 secondes remet tous les compteurs à zéro
-- Au 6e message dans la fenêtre : timeout Discord natif de 5 min (`GuildMemberTimeout`), message éphémère d'avertissement (une seule fois par fenêtre via `warned map[userKey]bool`), log dans `LOG_CHANNEL_ID`
+- Au 6e message dans la fenêtre : timeout Discord natif de 5 min (`GuildMemberTimeout`), message d'avertissement (une seule fois par fenêtre via `warned map[userKey]bool`), log dans `LOG_CHANNEL_ID`, `metrics.IncrSpamTimeout()`
 - `Shutdown()` ferme le canal `done` pour arrêter le ticker proprement
 
 ### Logs de modération (`internal/moderation/modlog.go`)
 
 - `Logger{logChanID string}` — `LogTimeout`, `LogBan`, `LogUnban`
 - `LogBan`/`LogUnban` : goroutine avec 600ms de délai pour laisser Discord peupler l'audit log, puis `GuildAuditLog` pour récupérer le modérateur
-- Cast explicite : `s.GuildAuditLog(guildID, "", "", int(actionType), 5)` — `discordgo.AuditLogAction` est un type nommé, pas `int`
 
 ### Auto-rôles (`internal/moderation/autoroles.go`)
 
@@ -122,7 +156,6 @@ La pagination XP et économie passe par des helpers privés partagés entre comm
 - `/setuproles` poste un embed épinglé dans le canal courant et sauvegarde `roles_channel_id` + `roles_message_id` en DB
 - `/addrolebutton` insère dans `role_buttons` (UNIQUE guild+role) et met à jour l'embed via `refreshEmbed`
 - Boutons : `role_toggle:<roleID>` — vérifie `i.Member.Roles`, ajoute ou retire le rôle, répond éphémère
-- `ComponentEmoji` est un pointeur dans discordgo v0.29.0 : `&discordgo.ComponentEmoji{Name: emoji}`
 
 ---
 
@@ -145,7 +178,7 @@ SQLite via `modernc.org/sqlite` (pure Go, zéro CGO). Migrations auto au démarr
 
 **Transactions SQL** sur tous les transferts financiers (deposit, withdraw, pay, buy, sell) pour prévenir les double-dépenses.
 
-**Migrations idempotentes** : chaque ajout de colonne est précédé d'une vérification `pragma_table_info` — le démarrage est sûr peu importe la version de la DB existante.
+**Migrations idempotentes** : chaque ajout de colonne est précédé d'une vérification `pragma_table_info`.
 
 ---
 
@@ -158,7 +191,7 @@ SQLite via `modernc.org/sqlite` (pure Go, zéro CGO). Migrations auto au démarr
 - La vérification admin passe par le bit `PermissionAdministrator` Discord, pas un rôle hardcodé
 
 ### Achievements
-`Manager.Check(guildID, userID, key)` est fire-and-forget : `INSERT OR IGNORE` en DB, erreurs logées et jamais propagées — les achievements ne peuvent pas bloquer le gameplay.
+`Manager.Check(guildID, userID, key)` est fire-and-forget : `INSERT OR IGNORE` en DB, erreurs logées (`metrics.IncrDBError()`) et jamais propagées — les achievements ne peuvent pas bloquer le gameplay.
 
 ### Build tags CGO/musique
 `audio_cgo.go` (tag `cgo`) appelle `dgvoice.PlayAudioFile`, requiert gcc + libopus.
@@ -167,19 +200,24 @@ La musique est fonctionnelle uniquement en Docker (image Linux avec ffmpeg + lib
 
 ### Graceful shutdown
 
-À réception de SIGINT/SIGTERM, `cmd/main.go` appelle `handler.Shutdown()` avant que les defers (`dg.Close()`, `db.Close()`) ne s'exécutent :
+À réception de SIGINT/SIGTERM, `signal.NotifyContext` débloque le main. Une goroutine exécute la séquence dans un context à 10 secondes :
 
 ```
-handler.Shutdown()
-    ├── moderation.Monitor.Shutdown() → close(done)
-    │       └── resetLoop() goroutine : <-done → return
+healthSrv.Shutdown(ctx)          ← 0. Fermer le health server HTTP
+dg.Close()                       ← 1. Fermer la session Discord
+handler.Shutdown()               ← 2. Arrêter les sub-managers
     ├── games.Manager.Shutdown()
     │       └── BJManager.Shutdown() → close(done)
     │               └── cleanup() goroutine : <-done → return
-    └── music.Manager.Shutdown()
-            └── Player.Stop() × N guilds actifs
-                    └── loop() goroutine : <-p.stop → return
+    ├── music.Manager.Shutdown()
+    │       └── Player.Stop() × N guilds actifs
+    │               └── loop() goroutine : <-p.stop → return
+    └── moderation.Monitor.Shutdown() → close(done)
+            └── resetLoop() goroutine : <-done → return
+db.Close()                       ← 3. Fermer la DB (via defer)
 ```
+
+Si la séquence dépasse 10s → `slog.Warn("shutdown forcé")` + sortie immédiate.
 
 ---
 

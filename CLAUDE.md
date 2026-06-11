@@ -36,6 +36,9 @@ STAFF_ROLE_ID=       # Role that can see tickets
 TICKET_CATEGORY_ID=  # Category channel for ticket channels
 LOG_CHANNEL_ID=      # Channel to post ticket transcripts on close and moderation logs
 DB_PATH=./data/bot.db
+LOG_FORMAT=text      # json or text (default: text)
+LOG_LEVEL=info       # debug, info, warn, error (default: info)
+HEALTH_PORT=8080     # HTTP health check port (0 = disabled)
 ```
 
 Per-guild settings are stored in `guild_settings` and configured via slash commands: `levelup_channel_id`, `daily_cooldown_hours`, `work_cooldown_hours`, `max_bet`, `auto_role_id`, `roles_channel_id`, `roles_message_id`.
@@ -43,10 +46,22 @@ Per-guild settings are stored in `guild_settings` and configured via slash comma
 ## Architecture
 
 ### Entry point and wiring
-`cmd/main.go` loads config, opens the SQLite DB (which auto-migrates on startup), creates a single `commands.Handler`, wires it to discordgo via thin adapter functions in `internal/events/` (Ready, InteractionCreate, VoiceStateUpdate, GuildMemberAdd, GuildBanAdd, GuildBanRemove), adds a raw MessageCreate handler for XP gain and anti-spam check, then blocks on SIGINT. Requires `IntentsGuildBans` for ban event delivery.
+`cmd/main.go` loads config (which calls `logger.Init()` to set up the global slog handler), opens the SQLite DB (auto-migrates on startup), creates a single `commands.Handler`, wires it to discordgo via thin adapter functions in `internal/events/`, starts the HTTP health server, then blocks on SIGINT/SIGTERM via `signal.NotifyContext`.
+
+On signal: health server shuts down → `dg.Close()` → `handler.Shutdown()` → `db.Close()` (defer). A 10-second context caps the whole sequence.
+
+### Logging
+All logging goes through `log/slog` (Go standard library). The global handler is initialised once in `config.Load()` via `internal/logger.Init()`, which reads `LOG_FORMAT` (json|text) and `LOG_LEVEL` (debug|info|warn|error) from env. Every log call carries a `"component"` key and relevant context attributes (`guild_id`, `user_id`, `command`, `error`). Never use `log.Printf` — use `slog.Info/Warn/Error` with key-value pairs.
+
+### Metrics
+`internal/metrics.GetMetrics()` returns the process-wide singleton (`sync.Once`). Counters use `sync/atomic.Int64`; the command map uses `sync.RWMutex`. Call sites:
+- `IncrCommand(name)` — in `Handle()` on every slash command dispatch
+- `IncrMessage()` — in `xp.Manager.HandleMessage()` on every message
+- `IncrSpamTimeout()` — in `moderation.Monitor.Check()` on successful timeout
+- `IncrDBError()` — in `xp/manager.go` and `achievements/manager.go` on DB errors
 
 ### Command routing
-`internal/commands/handler.go` is the central hub. `NewHandler` instantiates all sub-managers and populates a `map[string]CommandFunc`. `Handle()` dispatches slash commands by name and component interactions by `CustomID`. Adding a new slash command requires: registering the handler func in `register()`, adding the `ApplicationCommand` definition in `RegisterCommands()`, and writing the handler method in the appropriate `*_cmd.go` file.
+`internal/commands/handler.go` is the central hub. `NewHandler` instantiates all sub-managers and populates a `map[string]CommandFunc`. `Handle()` dispatches slash commands by name (and increments the metrics counter) and component interactions by `CustomID`. Adding a new slash command requires: registering the handler func in `register()`, adding the `ApplicationCommand` definition in `RegisterCommands()`, and writing the handler method in the appropriate `*_cmd.go` file.
 
 Component interactions (`bj_hit`, `bj_stand`, `close_ticket`, `transcript_ticket`), paginated leaderboard buttons (`xplb:N`, `ecolb:N`), and role toggle buttons (`role_toggle:<roleID>`) are dispatched in `handleComponent()`.
 
@@ -55,7 +70,9 @@ Component interactions (`bj_hit`, `bj_stand`, `close_ticket`, `transcript_ticket
 ### Sub-systems
 | Package | Responsibility |
 |---|---|
-| `internal/config` | Loads `.env` via godotenv |
+| `internal/config` | Loads `.env` via godotenv, validates TOKEN/GUILD_ID (fatal), LOG_LEVEL (warn+fallback), DB_PATH (write-check); exposes `Version = "1.0.3"` |
+| `internal/logger` | Initialises the global `slog` handler once (`Init()`); reads `LOG_FORMAT` and `LOG_LEVEL` from env |
+| `internal/metrics` | Process-wide singleton with atomic counters; `Snapshot()` returns top-5 commands + all counters; `FormatUptime()` formats a `time.Duration` |
 | `internal/database` | SQLite connection (modernc pure-Go driver), WAL mode, auto-migrations on startup; satisfies `ChannelSettings` interface for xp.Manager |
 | `internal/repositories` | Raw SQL CRUD: `xp_repo.go`, `economy_repo.go`, `items_repo.go`, `bj_repo.go`, `achievements_repo.go`, `stats_repo.go` |
 | `internal/xp` | XP gain on message (15–25 XP, 60s cooldown persisted in DB), MEE6 level formula, prestige at level 100; level-up announcements sent to `levelup_channel_id` if configured |
@@ -96,16 +113,19 @@ Admin commands verify the Discord `Administrator` permission via the Discord API
 - Admin commands validate `amount > 0` at the command handler level, before any DB call.
 
 ### Graceful shutdown
-`cmd/main.go` calls `handler.Shutdown()` on SIGINT/SIGTERM, before `dg.Close()` and `db.Close()` defers execute:
+`cmd/main.go` handles SIGINT/SIGTERM via `signal.NotifyContext`. On signal, a goroutine runs the shutdown sequence within a 10-second timeout:
 
 ```
-handler.Shutdown()
-    ├── moderation.Monitor.Shutdown() → close(done)
-    │       └── resetLoop() goroutine: <-done → return
+healthSrv.Shutdown(ctx)          ← 0. Fermer le health server HTTP
+dg.Close()                       ← 1. Fermer la session Discord
+handler.Shutdown()               ← 2. Arrêter les sub-managers
     ├── games.Manager.Shutdown()
     │       └── BJManager.Shutdown() → close(done)
     │               └── cleanup() goroutine: <-done → return
-    └── music.Manager.Shutdown()
-            └── Player.Stop() × N active guilds
-                    └── loop() goroutine: <-p.stop → return
+    ├── music.Manager.Shutdown()
+    │       └── Player.Stop() × N active guilds
+    │               └── loop() goroutine: <-p.stop → return
+    └── moderation.Monitor.Shutdown() → close(done)
+            └── resetLoop() goroutine: <-done → return
+db.Close()                       ← 3. Fermer la DB (via defer)
 ```
