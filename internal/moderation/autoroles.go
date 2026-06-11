@@ -2,7 +2,7 @@ package moderation
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -24,7 +24,7 @@ func (m *RolesManager) HandleMemberJoin(s *discordgo.Session, guildID, userID st
 		return
 	}
 	if err := s.GuildMemberRoleAdd(guildID, userID, roleID); err != nil {
-		log.Printf("[autoroles] Erreur attribution rôle %s à %s: %v", roleID, userID, err)
+		slog.Error("attribution rôle échouée", "component", "autoroles", "role_id", roleID, "user_id", userID, "error", err)
 	}
 }
 
@@ -54,7 +54,7 @@ func (m *RolesManager) SetupRoles(s *discordgo.Session, guildID, channelID strin
 	}
 
 	if err := s.ChannelMessagePin(channelID, msg.ID); err != nil {
-		log.Printf("[autoroles] Épinglage échoué: %v", err)
+		slog.Warn("épinglage échoué", "component", "autoroles", "error", err)
 	}
 
 	return m.db.SetRolesChannelAndMessage(guildID, channelID, msg.ID)

@@ -1,7 +1,7 @@
 package music
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
@@ -85,7 +85,7 @@ func (p *Player) loop(s *discordgo.Session, guildID string) {
 		p.current = &track
 		p.mu.Unlock()
 
-		log.Printf("[music] Lecture: %s", track.Title)
+		slog.Info("lecture", "component", "music", "title", track.Title)
 
 		done := make(chan bool)
 		go playAudioFile(p.vc, track.URL, done)

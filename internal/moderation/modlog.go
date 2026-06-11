@@ -2,7 +2,7 @@ package moderation
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -23,7 +23,7 @@ func (l *Logger) send(s *discordgo.Session, embed *discordgo.MessageEmbed) {
 		return
 	}
 	if _, err := s.ChannelMessageSendEmbed(l.logChanID, embed); err != nil {
-		log.Printf("[modlog] Erreur envoi log: %v", err)
+		slog.Error("erreur envoi log", "component", "modlog", "error", err)
 	}
 }
 

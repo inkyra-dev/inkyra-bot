@@ -2,12 +2,13 @@ package xp
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 
 	"github.com/bwmarrin/discordgo"
 
 	"discord-bot/internal/achievements"
+	"discord-bot/internal/metrics"
 	"discord-bot/internal/repositories"
 	"discord-bot/internal/utils"
 )
@@ -40,6 +41,8 @@ var levelAchievements = map[int]string{
 
 // HandleMessage est appelé à chaque message d'utilisateur pour attribuer de l'XP.
 func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID string) {
+	metrics.GetMetrics().IncrMessage()
+
 	// Compteur brut de messages (sans cooldown) pour les achievements.
 	if n, err := m.statsRepo.IncrementMessages(guildID, userID); err == nil {
 		switch n {
@@ -68,14 +71,16 @@ func (m *Manager) HandleMessage(s *discordgo.Session, guildID, userID, channelID
 	gain := int64(minXPGain + rand.Intn(maxXPGain-minXPGain+1))
 	newTotal, err := m.repo.AddXP(guildID, userID, gain)
 	if err != nil {
-		log.Printf("[xp] AddXP error: %v", err)
+		slog.Error("AddXP échoué", "component", "xp", "guild_id", guildID, "user_id", userID, "error", err)
+		metrics.GetMetrics().IncrDBError()
 		return
 	}
 
 	newLevel := LevelFromXP(newTotal)
 	if newLevel != oldLevel {
 		if err := m.repo.UpdateLevel(guildID, userID, newLevel); err != nil {
-			log.Printf("[xp] UpdateLevel error: %v", err)
+			slog.Error("UpdateLevel échoué", "component", "xp", "guild_id", guildID, "user_id", userID, "error", err)
+			metrics.GetMetrics().IncrDBError()
 		}
 		if key, ok := levelAchievements[newLevel]; ok {
 			m.achMgr.Check(guildID, userID, key)

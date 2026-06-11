@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -102,12 +102,11 @@ func (m *Manager) Close(s *discordgo.Session, channelID, closedByID string) erro
 		m.logClosure(s, ticket, closedByID, content)
 	}
 
-	log.Printf("[tickets] Ticket %s fermé par %s", channelID, closedByID)
+	slog.Info("ticket fermé", "component", "tickets", "channel_id", channelID, "closed_by", closedByID)
 
-	// Suppression du salon après un délai pour que le message de clôture soit lisible
 	time.AfterFunc(5*time.Second, func() {
 		if _, err := s.ChannelDelete(channelID); err != nil {
-			log.Printf("[tickets] Erreur suppression salon %s: %v", channelID, err)
+			slog.Error("suppression salon échouée", "component", "tickets", "channel_id", channelID, "error", err)
 		}
 	})
 

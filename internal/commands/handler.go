@@ -2,7 +2,7 @@ package commands
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -12,6 +12,7 @@ import (
 	"discord-bot/internal/database"
 	"discord-bot/internal/economy"
 	"discord-bot/internal/games"
+	"discord-bot/internal/metrics"
 	"discord-bot/internal/moderation"
 	"discord-bot/internal/music"
 	"discord-bot/internal/repositories"
@@ -66,6 +67,7 @@ func NewHandler(s *discordgo.Session, cfg *config.Config, db *database.DB) *Hand
 		commands:    make(map[string]CommandFunc),
 	}
 	h.register()
+	metrics.GetMetrics() // initialise le singleton (startTime) dès le démarrage du handler
 	return h
 }
 
@@ -144,6 +146,7 @@ func (h *Handler) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
 		name := i.ApplicationCommandData().Name
+		metrics.GetMetrics().IncrCommand(name)
 		if fn, ok := h.commands[name]; ok {
 			fn(s, i)
 		}
@@ -337,16 +340,17 @@ func (h *Handler) RegisterCommands() {
 
 	for _, cmd := range defs {
 		if _, err := h.session.ApplicationCommandCreate(h.session.State.User.ID, h.cfg.GuildID, cmd); err != nil {
-			log.Printf("[commands] Erreur création /%s: %v", cmd.Name, err)
+			slog.Error("création commande échouée", "component", "commands", "command", cmd.Name, "error", err)
 		}
 	}
-	log.Printf("[commands] %d commandes enregistrées", len(defs))
+	slog.Info("commandes enregistrées", "component", "commands", "count", len(defs))
 }
 
 func (h *Handler) Shutdown() {
 	h.gamesMgr.Shutdown()
 	h.music.Shutdown()
 	h.spamMonitor.Shutdown()
+	slog.Info("bot arrêté proprement", "component", "commands")
 }
 
 // HandleVoiceStateUpdate est appelé par l'event voice.

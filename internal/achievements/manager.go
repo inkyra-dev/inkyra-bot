@@ -1,8 +1,9 @@
 package achievements
 
 import (
-	"log"
+	"log/slog"
 
+	"discord-bot/internal/metrics"
 	"discord-bot/internal/repositories"
 )
 
@@ -75,7 +76,8 @@ func NewManager(repo *repositories.AchievementRepo) *Manager {
 // achievement failures must never block gameplay.
 func (m *Manager) Check(guildID, userID, key string) {
 	if _, err := m.repo.Unlock(guildID, userID, key); err != nil {
-		log.Printf("[achievements] unlock %q for %s/%s: %v", key, guildID, userID, err)
+		slog.Error("unlock achievement échoué", "component", "achievements", "key", key, "guild_id", guildID, "user_id", userID, "error", err)
+		metrics.GetMetrics().IncrDBError()
 	}
 }
 

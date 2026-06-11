@@ -2,11 +2,13 @@ package moderation
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+
+	"discord-bot/internal/metrics"
 )
 
 const (
@@ -81,20 +83,22 @@ func (m *Monitor) Check(s *discordgo.Session, guildID, channelID, userID, userna
 	if firstOffense {
 		warn := fmt.Sprintf("⚠️ <@%s>, tu envoies trop de messages trop vite. Un timeout de **5 minutes** va être appliqué.", userID)
 		if _, err := s.ChannelMessageSend(channelID, warn); err != nil {
-			log.Printf("[antispam] Avertissement échoué pour %s: %v", userID, err)
+			slog.Warn("avertissement échoué", "component", "antispam", "user_id", userID, "error", err)
 		}
 	}
 
 	until := time.Now().Add(timeoutDuration)
 	if err := s.GuildMemberTimeout(guildID, userID, &until); err != nil {
-		log.Printf("[antispam] Timeout échoué pour %s: %v", userID, err)
+		slog.Error("timeout échoué", "component", "antispam", "user_id", userID, "error", err)
+	} else {
+		metrics.GetMetrics().IncrSpamTimeout()
 	}
 
 	if m.logger != nil {
 		m.logger.LogTimeout(s, userID, username, channelID)
 	}
 
-	log.Printf("[antispam] Timeout appliqué à %s (%s) dans le canal %s", username, userID, channelID)
+	slog.Info("timeout appliqué", "component", "antispam", "user_id", userID, "username", username, "channel_id", channelID)
 }
 
 func (m *Monitor) Shutdown() {

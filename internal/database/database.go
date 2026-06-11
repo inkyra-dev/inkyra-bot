@@ -2,7 +2,7 @@ package database
 
 import (
 	"database/sql"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -32,6 +32,6 @@ func New(path string) (*DB, error) {
 		return nil, err
 	}
 
-	log.Println("[database] Initialisée")
+	slog.Info("base de données initialisée", "component", "database")
 	return d, nil
 }

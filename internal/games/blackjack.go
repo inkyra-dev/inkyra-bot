@@ -2,7 +2,7 @@ package games
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -223,7 +223,7 @@ func (m *BJManager) Start(guildID, userID, channelID string, bet int64) (*Blackj
 	m.mu.Unlock()
 
 	if err := m.repo.Open(guildID, userID); err != nil {
-		log.Printf("[bj] repo.Open: %v", err)
+		slog.Error("repo.Open échoué", "component", "blackjack", "guild_id", guildID, "user_id", userID, "error", err)
 	}
 	return s, s.initialOutcome()
 }
@@ -241,7 +241,7 @@ func (m *BJManager) Delete(guildID, userID string) {
 	m.mu.Unlock()
 
 	if err := m.repo.Close(guildID, userID); err != nil {
-		log.Printf("[bj] repo.Close: %v", err)
+		slog.Error("repo.Close échoué", "component", "blackjack", "guild_id", guildID, "user_id", userID, "error", err)
 	}
 }
 
@@ -266,7 +266,7 @@ func (m *BJManager) cleanup() {
 				if s.CreatedAt.Before(limit) {
 					delete(m.sessions, k)
 					if err := m.repo.Close(s.GuildID, s.UserID); err != nil {
-						log.Printf("[bj] repo.Close (cleanup): %v", err)
+						slog.Error("repo.Close cleanup échoué", "component", "blackjack", "guild_id", s.GuildID, "user_id", s.UserID, "error", err)
 					}
 				}
 			}
